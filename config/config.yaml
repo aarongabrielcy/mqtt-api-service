@@ -1,0 +1,92 @@
+# config/config.yaml
+
+app:
+  name: mqtt-api-service
+  version: 1.0.0
+  environment: production
+  log_level: info
+
+# MQTT LG Configuration
+mqtt:
+  broker: mqtt.lgeapi.com
+  port: 8883
+  use_tls: true
+  
+  # Credenciales (variables de entorno)
+  username: ${LG_MQTT_USER}
+  password: ${LG_MQTT_PASS}
+  
+  # Client ID
+  client_id: ${LG_CLIENT_ID}
+  
+  # Topics a suscribirse (dinámicos, basados en client_id)
+  # Se construyen en main.go como: app/clients/{clientId}/{push|inbox|outbox}
+  
+  reconnect_interval: 30s
+  keepalive: 60
+  qos: 1
+
+# LG API Configuration
+lg_api:
+  base_url: https://smartsolution.developer.lge.com/api
+  
+  # Autenticación (endpoint: /client/certificate)
+  client_id: ${LG_API_CLIENT_ID}
+  client_secret: ${LG_API_CLIENT_SECRET}
+  
+  token_endpoint: /client/certificate
+  timeout: 30s
+  max_retries: 3
+  
+  # ¿Polling de estado? (Implementar después, si necesario)
+  poll_enabled: false
+  poll_interval: 5m
+
+# Output: gRPC a tracking-platform
+grpc:
+  target: ${TRACKING_PLATFORM_HOST:-tracking-platform:50051}
+  timeout: 5s
+  max_concurrent_streams: 100
+  keepalive_time: 30s
+  keepalive_timeout: 5s
+
+# MongoDB para raw data
+mongo:
+  uri: ${MONGO_URI:-mongodb://localhost:27017}
+  database: device_raw_data
+  
+  collections:
+    raw_messages: lg_raw_messages
+    dead_letter: messages_dead_letter
+    commands: lg_commands
+  
+  retention:
+    raw_messages_ttl: 30d
+    dead_letter_ttl: 90d
+    commands_ttl: 90d
+  
+  indexes:
+    raw_messages:
+      - device_id
+      - timestamp
+      - "device_id, timestamp"
+    commands:
+      - command_id
+      - device_id
+
+# Health checks
+health:
+  port: 8080
+  liveness_path: /health/live
+  readiness_path: /health/ready
+
+# Logging
+logging:
+  format: json
+  level: info
+  output: stdout
+
+# Tenants (si multi-tenant)
+tenancy:
+  enabled: false
+  default_tenant: default

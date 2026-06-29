@@ -1,0 +1,44 @@
+version: '3.8'
+
+services:
+  mongodb:
+    image: mongo:latest
+    container_name: mqtt-api-mongo
+    ports:
+      - "27017:27017"
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: admin
+      MONGO_INITDB_ROOT_PASSWORD: admin
+    volumes:
+      - mongodb_data:/data/db
+
+  mqtt-api-service:
+    build: .
+    container_name: mqtt-api-service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - mongodb
+    environment:
+      LG_CLIENT_ID: ${LG_CLIENT_ID}
+      LG_MQTT_USER: ${LG_MQTT_USER}
+      LG_MQTT_PASS: ${LG_MQTT_PASS}
+      LG_API_CLIENT_ID: ${LG_API_CLIENT_ID}
+      LG_API_CLIENT_SECRET: ${LG_API_CLIENT_SECRET}
+      MONGO_URI: mongodb://admin:admin@mongodb:27017
+      TRACKING_PLATFORM_HOST: tracking-platform:50051
+    networks:
+      - tracking-network
+
+  # Referencia a tracking-platform (si corre en otra máquina)
+  # tracking-platform:
+  #   image: tracking-platform:latest
+  #   ports:
+  #     - "50051:50051"
+
+networks:
+  tracking-network:
+    driver: bridge
+
+volumes:
+  mongodb_data:
