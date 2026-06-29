@@ -1,39 +1,62 @@
 ﻿package config
 
+import (
+	"fmt"
+	"os"
+
+	"github.com/joho/godotenv"
+	"gopkg.in/yaml.v3"
+)
+
 type Config struct {
-App struct {
-Name        string
-LogLevel    string
-Environment string
-}
-MQTT struct {
-Broker   string
-Port     int
-Username string
-Password string
-ClientID string
-}
-GRPC struct {
-Target string
-}
-Mongo struct {
-URI string
-}
-LGApi struct {
-BaseURL string
-}
+	App struct {
+		Name        string `yaml:"name"`
+		LogLevel    string `yaml:"log_level"`
+		Environment string `yaml:"environment"`
+	} `yaml:"app"`
+
+	MQTT struct {
+		Endpoint          string `yaml:"endpoint"`
+		ClientID          string `yaml:"client_id"`
+		KeepAlive         int    `yaml:"keepalive"`
+		QoS               int    `yaml:"qos"`
+		ReconnectInterval string `yaml:"reconnect_interval"`
+
+		TLS struct {
+			CAFile   string `yaml:"ca_file"`
+			CertFile string `yaml:"cert_file"`
+			KeyFile  string `yaml:"key_file"`
+		} `yaml:"tls"`
+	} `yaml:"mqtt"`
+
+	GRPC struct {
+		Target string `yaml:"target"`
+	} `yaml:"grpc"`
+
+	Mongo struct {
+		URI string `yaml:"uri"`
+	} `yaml:"mongo"`
+
+	LGApi struct {
+		BaseURL string `yaml:"base_url"`
+	} `yaml:"lg_api"`
 }
 
 func LoadConfig(path string) (*Config, error) {
-cfg := &Config{}
-cfg.App.Name = "mqtt-api-service"
-cfg.App.LogLevel = "info"
-cfg.App.Environment = "production"
-cfg.MQTT.Broker = "mqtt.lgeapi.com"
-cfg.MQTT.Port = 8883
-cfg.MQTT.ClientID = "test-client"
-cfg.GRPC.Target = "localhost:50051"
-cfg.Mongo.URI = "mongodb://localhost:27017"
-cfg.LGApi.BaseURL = "https://smartsolution.developer.lge.com/api"
-return cfg, nil
+	_ = godotenv.Load()
+
+	cfg := &Config{}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, fmt.Errorf("no se pudo leer %s: %w", path, err)
+	}
+
+	data = []byte(os.ExpandEnv(string(data)))
+
+	if err := yaml.Unmarshal(data, cfg); err != nil {
+		return nil, fmt.Errorf("error al parsear %s: %w", path, err)
+	}
+
+	return cfg, nil
 }

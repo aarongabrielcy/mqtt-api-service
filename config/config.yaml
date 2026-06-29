@@ -3,21 +3,18 @@
 app:
   name: mqtt-api-service
   version: 1.0.0
-  environment: production
+  environment: dev
   log_level: info
 
 # MQTT LG Configuration
 mqtt:
-  broker: mqtt.lgeapi.com
-  port: 8883
-  use_tls: true
-  
-  # Credenciales (variables de entorno)
-  username: ${LG_MQTT_USER}
-  password: ${LG_MQTT_PASS}
-  
-  # Client ID
+  endpoint: mqtts://a3phael99lf879-ats.iot.us-west-2.amazonaws.com:8883
   client_id: ${LG_CLIENT_ID}
+
+  tls:
+    ca_file: certs/AmazonRootCA1.pem
+    cert_file: certs/lg-client.crt
+    key_file: certs/lg-client.key
   
   # Topics a suscribirse (dinámicos, basados en client_id)
   # Se construyen en main.go como: app/clients/{clientId}/{push|inbox|outbox}
@@ -28,7 +25,7 @@ mqtt:
 
 # LG API Configuration
 lg_api:
-  base_url: https://smartsolution.developer.lge.com/api
+  base_url: https://api-aic.lgthinq.com
   
   # Autenticación (endpoint: /client/certificate)
   client_id: ${LG_API_CLIENT_ID}
