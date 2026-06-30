@@ -8,13 +8,14 @@ import (
 	"os/signal"
 	"syscall"
 
-	"mqtt-api-service/internal/adapters/api"
-	"mqtt-api-service/internal/adapters/grpc"
-	"mqtt-api-service/internal/adapters/mongo"
+	//"mqtt-api-service/internal/adapters/api"
+	//"mqtt-api-service/internal/adapters/grpc"
+	//"mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
-	"mqtt-api-service/internal/adapters/parser"
-	"mqtt-api-service/internal/application/normalizers"
-	"mqtt-api-service/internal/application/services"
+	//"mqtt-api-service/internal/adapters/parser"
+	//"mqtt-api-service/internal/application/normalizers"
+
+	//"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/logger"
 
@@ -42,66 +43,93 @@ func main() {
 	)
 
 	// 3. MQTT Client (LG broker)
-	mqttClient, err := mqtt.NewClient(cfg.MQTT, log)
+	client, err := mqtt.NewClient(*cfg, log)
 	if err != nil {
-		log.Fatal("Error creando MQTT client", zap.Error(err))
+		log.Fatal("mqtt client error", zap.Error(err))
 	}
 
-	// 4. Componentes
-	lgAPIClient := api.NewLGAPIClient(cfg.LGApi, log)
-	mongoRepo, err := mongo.NewRepository(cfg.Mongo, log)
-	if err != nil {
-		log.Fatal("Error conectando MongoDB", zap.Error(err))
-	}
-	defer mongoRepo.Close(ctx)
+	log.Info("Intentando conectar a MQTT...")
 
-	grpcClient, err := grpc.NewClient(cfg.GRPC, log)
-	if err != nil {
-		log.Fatal("Error creando gRPC client", zap.Error(err))
+	if err := client.Connect(ctx); err != nil {
+		log.Fatal("MQTT connect failed", zap.Error(err))
 	}
 
-	// 5. Parsers y normalizers
-	lgParser := parser.NewLGMessageParser(log)
-	messageNormalizer := normalizers.NewLGMessageNormalizer(log)
-	eventClassifier := normalizers.NewEventClassifier(log)
+	log.Info("MQTT CONECTADO EXITOSAMENTE")
 
-	// 6. Servicio principal
-	lgService := services.NewLGService(
-		mqttClient,
-		lgAPIClient,
-		mongoRepo,
-		grpcClient,
-		lgParser,
-		messageNormalizer,
-		eventClassifier,
-		log,
-	)
-
-	// 7. Conectar MQTT
-	if err := mqttClient.Connect(ctx); err != nil {
-		log.Fatal("Error conectando a MQTT broker LG", zap.Error(err))
+	handler := func(ctx context.Context, topic string, payload []byte) error {
+		log.Info("Mensaje recibido",
+			zap.String("topic", topic),
+			zap.ByteString("payload", payload),
+		)
+		return nil
 	}
-	defer mqttClient.Disconnect(ctx)
 
-	// 8. Suscribirse a topics de LG
 	subscriptions := []string{
 		fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID),
 		fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID),
-		fmt.Sprintf("app/clients/%s/outbox", cfg.MQTT.ClientID),
 	}
 
 	for _, topic := range subscriptions {
-		if err := mqttClient.Subscribe(ctx, topic, lgService.HandleLGMessage); err != nil {
+		if err := client.Subscribe(ctx, topic, handler); err != nil {
 			log.Error("Error suscribiendo a topic", zap.String("topic", topic), zap.Error(err))
 		}
 		log.Info("Suscrito a topic", zap.String("topic", topic))
 	}
 
+	// // 4. Componentes
+	// lgAPIClient := api.NewLGAPIClient(cfg.LGApi, log)
+	// mongoRepo, err := mongo.NewRepository(cfg.Mongo, log)
+	// if err != nil {
+	// 	log.Fatal("Error conectando MongoDB", zap.Error(err))
+	// }
+	// defer mongoRepo.Close(ctx)
+
+	// grpcClient, err := grpc.NewClient(cfg.GRPC, log)
+	// if err != nil {
+	// 	log.Fatal("Error creando gRPC client", zap.Error(err))
+	// }
+
+	// // 5. Parsers y normalizers
+	// lgParser := parser.NewLGMessageParser(log)
+	// messageNormalizer := normalizers.NewLGMessageNormalizer(log)
+	// eventClassifier := normalizers.NewEventClassifier(log)
+
+	// // 6. Servicio principal
+	// lgService := services.NewLGService(
+	// 	mqttClient,
+	// 	lgAPIClient,
+	// 	mongoRepo,
+	// 	grpcClient,
+	// 	lgParser,
+	// 	messageNormalizer,
+	// 	eventClassifier,
+	// 	log,
+	// )
+
+	// // 7. Conectar MQTT
+	// if err := mqttClient.Connect(ctx); err != nil {
+	// 	log.Fatal("Error conectando a MQTT broker LG", zap.Error(err))
+	// }
+	// defer mqttClient.Disconnect(ctx)
+
+	// // 8. Suscribirse a topics de LG
+	// subscriptions := []string{
+	// 	fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID),
+	// 	fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID),
+	// 	fmt.Sprintf("app/clients/%s/outbox", cfg.MQTT.ClientID),
+	// }
+
+	// for _, topic := range subscriptions {
+	// 	if err := mqttClient.Subscribe(ctx, topic, lgService.HandleLGMessage); err != nil {
+	// 		log.Error("Error suscribiendo a topic", zap.String("topic", topic), zap.Error(err))
+	// 	}
+	// 	log.Info("Suscrito a topic", zap.String("topic", topic))
+	// }
+
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	log.Info("mqtt-api-service corriendo")
 	<-sigChan
 
 	log.Info("Señal de shutdown recibida")

@@ -35,3 +35,9 @@ logs/
 # Database
 *.db
 *.sqlite3
+
+#certificados
+certs/
+*.pem
+*.crt
+*.key
