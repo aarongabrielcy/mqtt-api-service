@@ -11,7 +11,9 @@ import (
 	//"mqtt-api-service/internal/adapters/api"
 	//"mqtt-api-service/internal/adapters/grpc"
 	//"mqtt-api-service/internal/adapters/mongo"
+	"mqtt-api-service/internal/adapters/api/lg"
 	"mqtt-api-service/internal/adapters/mqtt"
+
 	//"mqtt-api-service/internal/adapters/parser"
 	//"mqtt-api-service/internal/application/normalizers"
 
@@ -74,6 +76,11 @@ func main() {
 			log.Error("Error suscribiendo a topic", zap.String("topic", topic), zap.Error(err))
 		}
 		log.Info("Suscrito a topic", zap.String("topic", topic))
+	}
+
+	lgClient, err := lg.NewLGAPIClient(cfg, log)
+	if err != nil {
+		log.Fatal("Failed to initialize LG API client", zap.Error(err))
 	}
 
 	// // 4. Componentes

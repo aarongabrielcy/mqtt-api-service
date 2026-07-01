@@ -38,7 +38,14 @@ type Config struct {
 	} `yaml:"mongo"`
 
 	LGApi struct {
-		BaseURL string `yaml:"base_url"`
+		BaseURL      string `yaml:"base_url"`
+		APIKey       string `yaml:"api_key"`
+		AccessToken  string `yaml:"access_token"`
+		ClientID     string `yaml:"client_id"`
+		CountryCode  string `yaml:"country_code"`
+		LanguageCode string `yaml:"language_code"`
+		ServicePhase string `yaml:"service_phase"`
+		Timeout      string `yaml:"timeout"`
 	} `yaml:"lg_api"`
 }
 
