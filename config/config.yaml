@@ -52,7 +52,7 @@ grpc:
 
 # MongoDB para raw data
 mongo:
-  uri: ${MONGO_URI:-mongodb://localhost:27017}
+  uri: ${MONGO_URI}
   database: device_raw_data
   
   collections:

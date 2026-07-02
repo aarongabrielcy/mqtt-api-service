@@ -5,7 +5,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"mqtt-api-service/internal/adapters/api/lg"
+	"mqtt-api-service/internal/adapters/cache"
+	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/parser"
+	"mqtt-api-service/internal/application/normalizers"
 	"mqtt-api-service/internal/infrastructure/config"
 	"time"
 
@@ -18,9 +21,14 @@ type LGService struct {
 	registryService *lg.DeviceRegistryService
 	eventService    *lg.EventService
 
-	stateParser *parser.LGStateParser
+	stateParser     *parser.LGStateParser
+	pushParser      *parser.LGPushParser
+	stateNormalizer *normalizers.LGStateNormalizer
 
-	log *zap.Logger
+	deviceStateStore *cache.DeviceStateStore
+
+	repository mongo.RawMessageRepository
+	log        *zap.Logger
 
 	clientID string
 
@@ -37,21 +45,24 @@ type ManagedDevice struct {
 	LastState *parser.AirConditionerState
 }
 
-func NewLGService(cfg *config.Config, log *zap.Logger) (*LGService, error) {
+func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepository, deviceStateStore *cache.DeviceStateStore) (*LGService, error) {
 	lgClient, err := lg.NewLGAPIClient(cfg, log)
 	if err != nil {
 		return nil, err
 	}
 
 	return &LGService{
-		deviceService:   lg.NewDeviceService(lgClient),
-		pushService:     lg.NewPushService(lgClient),
-		registryService: lg.NewDeviceRegistryService(lgClient),
-		eventService:    lg.NewEventService(lgClient),
-		stateParser:     parser.NewLGStateParser(log),
-		log:             log,
-		clientID:        cfg.LGApi.ClientID,
-		devices:         make(map[string]*ManagedDevice),
+		deviceService:    lg.NewDeviceService(lgClient),
+		pushService:      lg.NewPushService(lgClient),
+		registryService:  lg.NewDeviceRegistryService(lgClient),
+		eventService:     lg.NewEventService(lgClient),
+		stateParser:      parser.NewLGStateParser(log),
+		stateNormalizer:  normalizers.NewLGStateNormalizer(log),
+		deviceStateStore: deviceStateStore,
+		log:              log,
+		clientID:         cfg.LGApi.ClientID,
+		repository:       repo,
+		devices:          make(map[string]*ManagedDevice),
 	}, nil
 }
 
@@ -305,18 +316,96 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 			continue
 		}
 
-		s.log.Debug("device state parsed",
-			zap.String("deviceID", deviceID),
-			zap.Any("state", state),
-		)
-
 		device.LastState = state
+
+		var p map[string]any
+		json.Unmarshal(raw, &p)
+
+		if err := s.repository.SaveFromAPI(ctx, deviceID, "LG", "telemetry", "/devices/"+deviceID+"/state", string(raw), p); err != nil {
+			s.log.Error("failed to save raw message", zap.String("deviceID", deviceID), zap.Error(err))
+		}
+
+		normalized, err := s.stateNormalizer.NormalizeTelemetry(deviceID, device.Device.DeviceInfo.DeviceType, normalizers.EventCodeTracking, state)
+		if err != nil {
+			s.log.Error("failed to normalize telemetry", zap.String("deviceID", deviceID), zap.Error(err))
+			failed++
+			continue
+		}
+
+		s.log.Info("normalized telemetry ready to send", zap.ByteString("payload", normalized))
+
 	}
 
 	s.log.Info("Device states refreshed", zap.Int("devices", len(s.devices)), zap.Int("failed", failed))
 }
 
+func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayload []byte) error {
+	msg, err := s.pushParser.Parse(topic, rawPayload)
+	if err != nil {
+		s.log.Error("failed to parse push message",
+			zap.String("topic", topic),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	if len(msg.Report) == 0 {
+		s.log.Debug("push message without report, skipping",
+			zap.String("deviceID", msg.DeviceID),
+			zap.String("pushType", msg.PushType),
+		)
+		return nil
+	}
+
+	mergedState, err := s.deviceStateStore.MergePartial(ctx, msg.DeviceID, msg.Report)
+	if err != nil {
+		s.log.Error("failed to merge device state in redis",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	var state parser.AirConditionerState
+	if err := json.Unmarshal(mergedState, &state); err != nil {
+		s.log.Error("failed to unmarshal merged state",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	var p map[string]any
+	json.Unmarshal(rawPayload, &p)
+
+	if err := s.repository.SaveFromMQTT(ctx, msg.DeviceID, "LG", "push", topic, string(rawPayload), p); err != nil {
+		s.log.Error("failed to save raw push message", zap.String("deviceID", msg.DeviceID), zap.Error(err))
+	}
+
+	normalized, err := s.stateNormalizer.NormalizeTelemetry(
+		msg.DeviceID,
+		msg.DeviceType,
+		normalizers.EventCodePushNotification,
+		&state,
+	)
+	if err != nil {
+		s.log.Error("failed to normalize push message",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	fmt.Println(string(normalized))
+
+	return nil
+}
+
 func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool) error {
+	s.log.Info("SetDevicePower called",
+		zap.String("deviceID", deviceID),
+		zap.Bool("on", on),
+	)
 	if _, ok := s.devices[deviceID]; !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
