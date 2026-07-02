@@ -50,3 +50,21 @@ func (s *DeviceService) GetState(ctx context.Context, deviceID string) (json.Raw
 
 	return resp.Response, nil
 }
+
+func (s *DeviceService) ControlState(ctx context.Context, deviceID string, state json.RawMessage) error {
+	var resp APIResponse[any]
+
+	err := s.client.doRequest(
+		ctx,
+		"POST",
+		"/devices/"+deviceID+"/control",
+		state,
+		nil,
+		&resp,
+	)
+	if err != nil {
+		return err
+	}
+
+	return nil
+}

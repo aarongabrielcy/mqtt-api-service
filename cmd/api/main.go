@@ -7,12 +7,14 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	//"mqtt-api-service/internal/adapters/api"
 	//"mqtt-api-service/internal/adapters/grpc"
 	//"mqtt-api-service/internal/adapters/mongo"
-	"mqtt-api-service/internal/adapters/api/lg"
+
 	"mqtt-api-service/internal/adapters/mqtt"
+	lg_service "mqtt-api-service/internal/application/use_case/lg"
 
 	//"mqtt-api-service/internal/adapters/parser"
 	//"mqtt-api-service/internal/application/normalizers"
@@ -78,10 +80,18 @@ func main() {
 		log.Info("Suscrito a topic", zap.String("topic", topic))
 	}
 
-	lgClient, err := lg.NewLGAPIClient(cfg, log)
+	lgService, err := lg_service.NewLGService(cfg, log)
 	if err != nil {
-		log.Fatal("Failed to initialize LG API client", zap.Error(err))
+		log.Fatal("Error creando LGService", zap.Error(err))
 	}
+
+	err = lgService.Initialize(ctx)
+	if err != nil {
+		log.Fatal("Error inicializando LGService", zap.Error(err))
+	}
+
+	lgService.StartEventSubscriptionMonitor(ctx, 30*time.Minute)
+	lgService.StartDeviceStateMonitor(ctx, 2*time.Minute)
 
 	// // 4. Componentes
 	// lgAPIClient := api.NewLGAPIClient(cfg.LGApi, log)
