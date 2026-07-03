@@ -16,6 +16,8 @@ const (
 	EventCodeMQTTNotification
 	EventCodePushNotification
 	EventCodeDeviceStateChange
+	EventCodePowerOn
+	EventCodePowerOff
 )
 
 type NormalizedMessage struct {

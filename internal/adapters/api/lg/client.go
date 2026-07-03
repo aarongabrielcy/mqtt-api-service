@@ -22,6 +22,11 @@ type LGAPIClient struct {
 	log        *zap.Logger
 }
 
+type APIError struct {
+	StatusCode int
+	Body       string
+}
+
 func NewLGAPIClient(cfg *config.Config, log *zap.Logger) (*LGAPIClient, error) {
 
 	timeout, err := time.ParseDuration(cfg.LGApi.Timeout)
@@ -101,16 +106,15 @@ func (c *LGAPIClient) doRequest(
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		body, _ := io.ReadAll(resp.Body)
-		if len(body) > 500 {
-			body = body[:500]
+		respBody, _ := io.ReadAll(resp.Body)
+		if len(respBody) > 500 {
+			respBody = respBody[:500]
 		}
 
-		return fmt.Errorf(
-			"LG API error status=%d body=%s",
-			resp.StatusCode,
-			string(body),
-		)
+		return &APIError{
+			StatusCode: resp.StatusCode,
+			Body:       string(respBody),
+		}
 	}
 
 	if out == nil {
@@ -127,4 +131,8 @@ func (c *LGAPIClient) doRequest(
 	)
 
 	return nil
+}
+
+func (e *APIError) Error() string {
+	return fmt.Sprintf("LG API error status=%d body=%s", e.StatusCode, e.Body)
 }

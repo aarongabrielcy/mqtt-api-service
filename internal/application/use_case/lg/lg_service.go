@@ -3,6 +3,7 @@ package lg_service
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"mqtt-api-service/internal/adapters/api/lg"
 	"mqtt-api-service/internal/adapters/cache"
@@ -304,6 +305,11 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 
 		raw, err := s.deviceService.GetState(ctx, deviceID)
 		if err != nil {
+			var apiErr *lg.APIError
+			if errors.As(err, &apiErr) {
+				fmt.Printf("device %s desconectado: %v\n", deviceID, apiErr)
+			}
+
 			s.log.Error("failed to get device state", zap.String("deviceID", deviceID), zap.Error(err))
 			failed++
 			continue
@@ -366,6 +372,36 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 		return err
 	}
 
+	var reportMap map[string]json.RawMessage
+	if err := json.Unmarshal(msg.Report, &reportMap); err != nil {
+		s.log.Error("failed to inspect report fields",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
+		return err
+	}
+
+	operationRaw, hasOperation := reportMap["operation"]
+	isPureOperationChange := hasOperation && len(reportMap) == 1
+
+	if !isPureOperationChange {
+		s.log.Debug("push message is not a dedicated operation change, state updated in redis only",
+			zap.String("deviceID", msg.DeviceID),
+		)
+		return nil
+	}
+
+	var operation struct {
+		AirConOperationMode string `json:"airConOperationMode"`
+	}
+	if err := json.Unmarshal(operationRaw, &operation); err != nil {
+		s.log.Error("failed to parse operation field",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
+		return err
+	}
+
 	var state parser.AirConditionerState
 	if err := json.Unmarshal(mergedState, &state); err != nil {
 		s.log.Error("failed to unmarshal merged state",
@@ -374,20 +410,27 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 		)
 		return err
 	}
-
 	var p map[string]any
-	json.Unmarshal(rawPayload, &p)
+	json.Unmarshal(mergedState, &p)
 
-	if err := s.repository.SaveFromMQTT(ctx, msg.DeviceID, "LG", "push", topic, string(rawPayload), p); err != nil {
-		s.log.Error("failed to save raw push message", zap.String("deviceID", msg.DeviceID), zap.Error(err))
+	if err := s.repository.SaveFromMQTT(ctx, msg.DeviceID, "LG", "push", topic, string(mergedState), p); err != nil {
+		s.log.Error("failed to save push message",
+			zap.String("deviceID", msg.DeviceID),
+			zap.Error(err),
+		)
 	}
 
-	normalized, err := s.stateNormalizer.NormalizeTelemetry(
-		msg.DeviceID,
-		msg.DeviceType,
-		normalizers.EventCodePushNotification,
-		&state,
-	)
+	var eventCode normalizers.EventCode
+	switch operation.AirConOperationMode {
+	case "POWER_ON":
+		eventCode = normalizers.EventCodePowerOn
+	case "POWER_OFF":
+		eventCode = normalizers.EventCodePowerOff
+	default:
+		eventCode = normalizers.EventCodeTracking
+	}
+
+	normalized, err := s.stateNormalizer.NormalizeTelemetry(msg.DeviceID, msg.DeviceType, eventCode, &state)
 	if err != nil {
 		s.log.Error("failed to normalize push message",
 			zap.String("deviceID", msg.DeviceID),
@@ -396,9 +439,12 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 		return err
 	}
 
+	// TODO: reemplazar este print por el envío real al otro servicio (gRPC)
+	// una vez que esté listo.
 	fmt.Println(string(normalized))
 
 	return nil
+
 }
 
 func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool) error {
@@ -427,6 +473,11 @@ func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
+		var apiErr *lg.APIError
+		if errors.As(err, &apiErr) {
+			fmt.Printf("device %s desconectado: %v\n", deviceID, apiErr)
+		}
+
 		s.log.Error("failed to set device power", zap.String("deviceID", deviceID), zap.Error(err))
 		return err
 	}

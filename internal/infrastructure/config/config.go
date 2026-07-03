@@ -34,7 +34,9 @@ type Config struct {
 	} `yaml:"grpc"`
 
 	Mongo struct {
-		URI string `yaml:"uri"`
+		URI            string `yaml:"uri"`
+		DBName         string `yaml:"db_name"`
+		CollectionName string `yaml:"collection_name"`
 	} `yaml:"mongo"`
 
 	LGApi struct {

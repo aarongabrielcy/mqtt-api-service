@@ -31,20 +31,6 @@ services:
     networks:
       - mqtt-api-net
 
-  mongo-express:
-    image: mongo-express:1
-    container_name: mqtt-api-mongo-express
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    environment:
-      - ME_CONFIG_MONGODB_SERVER=mongo
-      - ME_CONFIG_BASICAUTH=false
-    depends_on:
-      - mongo
-    networks:
-      - mqtt-api-net
-
   redis:
     image: redis:7-alpine
     container_name: mqtt-api-redis

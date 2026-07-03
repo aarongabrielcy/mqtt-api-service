@@ -53,8 +53,9 @@ grpc:
 # MongoDB para raw data
 mongo:
   uri: ${MONGO_URI}
-  database: device_raw_data
-  
+  db_name: ${MONGO_DB_NAME}
+  collection_name: ${MONGO_COLLECTION_NAME}
+
   collections:
     raw_messages: lg_raw_messages
     dead_letter: messages_dead_letter
