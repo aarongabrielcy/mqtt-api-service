@@ -25,11 +25,14 @@ mqtt:
 
 # LG API Configuration
 lg_api:
-  base_url: https://api-aic.lgthinq.com
+  base_url: ${LG_API_BASE_URL}
   
+  api_key: ${LG_API_KEY}
+  access_token: ${LG_ACCESS_TOKEN}
+  country_code: ${COUNTRY_CODE}
+
   # Autenticación (endpoint: /client/certificate)
   client_id: ${LG_API_CLIENT_ID}
-  client_secret: ${LG_API_CLIENT_SECRET}
   
   token_endpoint: /client/certificate
   timeout: 30s
@@ -49,9 +52,10 @@ grpc:
 
 # MongoDB para raw data
 mongo:
-  uri: ${MONGO_URI:-mongodb://localhost:27017}
-  database: device_raw_data
-  
+  uri: ${MONGO_URI}
+  db_name: ${MONGO_DB_NAME}
+  collection_name: ${MONGO_COLLECTION_NAME}
+
   collections:
     raw_messages: lg_raw_messages
     dead_letter: messages_dead_letter

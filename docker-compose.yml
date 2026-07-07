@@ -1,44 +1,51 @@
-version: '3.8'
-
 services:
-  mongodb:
-    image: mongo:latest
-    container_name: mqtt-api-mongo
-    ports:
-      - "27017:27017"
-    environment:
-      MONGO_INITDB_ROOT_USERNAME: admin
-      MONGO_INITDB_ROOT_PASSWORD: admin
-    volumes:
-      - mongodb_data:/data/db
-
-  mqtt-api-service:
-    build: .
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
     container_name: mqtt-api-service
+    restart: unless-stopped
     ports:
       - "8080:8080"
-    depends_on:
-      - mongodb
+    volumes:
+      - ./config/config.yaml:/app/config/config.yaml:ro
+      - ./.env:/app/.env:ro
+      - ./certs:/app/certs:ro
     environment:
-      LG_CLIENT_ID: ${LG_CLIENT_ID}
-      LG_MQTT_USER: ${LG_MQTT_USER}
-      LG_MQTT_PASS: ${LG_MQTT_PASS}
-      LG_API_CLIENT_ID: ${LG_API_CLIENT_ID}
-      LG_API_CLIENT_SECRET: ${LG_API_CLIENT_SECRET}
-      MONGO_URI: mongodb://admin:admin@mongodb:27017
-      TRACKING_PLATFORM_HOST: tracking-platform:50051
+      - MONGO_URI=mongodb://mongo:27017
+      - REDIS_ADDR=redis:6379
+    depends_on:
+      - mongo
+      - redis
     networks:
-      - tracking-network
+      - mqtt-api-net
 
-  # Referencia a tracking-platform (si corre en otra máquina)
-  # tracking-platform:
-  #   image: tracking-platform:latest
-  #   ports:
-  #     - "50051:50051"
+  mongo:
+    image: mongo:7
+    container_name: mqtt-api-mongo
+    restart: unless-stopped
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - mqtt-api-net
 
-networks:
-  tracking-network:
-    driver: bridge
+  redis:
+    image: redis:7-alpine
+    container_name: mqtt-api-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - mqtt-api-net
 
 volumes:
-  mongodb_data:
+  mongo_data:
+  redis_data:
+
+networks:
+  mqtt-api-net:
+    driver: bridge

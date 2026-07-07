@@ -7,11 +7,18 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	//"mqtt-api-service/internal/adapters/api"
 	//"mqtt-api-service/internal/adapters/grpc"
 	//"mqtt-api-service/internal/adapters/mongo"
+
+	adaptercache "mqtt-api-service/internal/adapters/cache"
+	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
+	lg_service "mqtt-api-service/internal/application/use_case/lg"
+	infracache "mqtt-api-service/internal/infrastructure/cache"
+
 	//"mqtt-api-service/internal/adapters/parser"
 	//"mqtt-api-service/internal/application/normalizers"
 
@@ -42,6 +49,25 @@ func main() {
 		zap.String("environment", cfg.App.Environment),
 	)
 
+	mongoClient, err := mongo.NewMongoClient(ctx, cfg)
+	if err != nil {
+		log.Fatal("failed to connect to mongo", zap.Error(err))
+	}
+
+	rawMessageRepo := mongo.NewRawMessageService(mongoClient, "mqtt_api_service", "raw_messages")
+
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
+	redisClient, err := infracache.NewRedisClient(ctx, redisAddr, log)
+	if err != nil {
+		log.Fatal("failed to connect to redis", zap.Error(err))
+	}
+
+	deviceStateStore := adaptercache.NewDeviceStateStore(redisClient, log)
+
 	// 3. MQTT Client (LG broker)
 	client, err := mqtt.NewClient(*cfg, log)
 	if err != nil {
@@ -56,7 +82,20 @@ func main() {
 
 	log.Info("MQTT CONECTADO EXITOSAMENTE")
 
-	handler := func(ctx context.Context, topic string, payload []byte) error {
+	lgService, err := lg_service.NewLGService(cfg, log, rawMessageRepo, deviceStateStore)
+	if err != nil {
+		log.Fatal("Error creando LGService", zap.Error(err))
+	}
+
+	err = lgService.Initialize(ctx)
+	if err != nil {
+		log.Fatal("Error inicializando LGService", zap.Error(err))
+	}
+
+	lgService.StartEventSubscriptionMonitor(ctx, 30*time.Minute)
+	lgService.StartDeviceStateMonitor(ctx, 2*time.Minute)
+
+	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",
 			zap.String("topic", topic),
 			zap.ByteString("payload", payload),
@@ -64,17 +103,21 @@ func main() {
 		return nil
 	}
 
-	subscriptions := []string{
-		fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID),
-		fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID),
-	}
+	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID)
+	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID)
 
-	for _, topic := range subscriptions {
-		if err := client.Subscribe(ctx, topic, handler); err != nil {
-			log.Error("Error suscribiendo a topic", zap.String("topic", topic), zap.Error(err))
-		}
-		log.Info("Suscrito a topic", zap.String("topic", topic))
+	if err := client.Subscribe(ctx, pushTopic, lgService.HandlePushMessage); err != nil {
+		log.Error("Error suscribiendo a topic", zap.String("topic", pushTopic), zap.Error(err))
 	}
+	log.Info("Suscrito a topic", zap.String("topic", pushTopic))
+
+	if err := client.Subscribe(ctx, inboxTopic, inboxHandler); err != nil {
+		log.Error("Error suscribiendo a topic", zap.String("topic", inboxTopic), zap.Error(err))
+	}
+	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
+
+	lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
+	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)
 
 	// // 4. Componentes
 	// lgAPIClient := api.NewLGAPIClient(cfg.LGApi, log)
