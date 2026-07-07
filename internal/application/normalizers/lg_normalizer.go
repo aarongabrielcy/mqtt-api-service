@@ -13,11 +13,10 @@ type EventCode int
 
 const (
 	EventCodeTracking EventCode = iota
-	EventCodeMQTTNotification
-	EventCodePushNotification
 	EventCodeDeviceStateChange
 	EventCodePowerOn
 	EventCodePowerOff
+	EventCodeTemperatureChange
 )
 
 type NormalizedMessage struct {

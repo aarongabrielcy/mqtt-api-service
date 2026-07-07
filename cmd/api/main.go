@@ -116,6 +116,7 @@ func main() {
 	}
 	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
 
+	lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
 	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)
 
 	// // 4. Componentes
