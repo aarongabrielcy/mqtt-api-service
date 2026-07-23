@@ -45,6 +45,7 @@ lg_api:
 # Output: gRPC a tracking-platform
 grpc:
   target: ${TRACKING_PLATFORM_HOST:-tracking-platform:50051}
+  address: grpc-mock-server:50051
   timeout: 5s
   max_concurrent_streams: 100
   keepalive_time: 30s

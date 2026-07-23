@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	repository "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/parser"
 	"mqtt-api-service/internal/application/normalizers"
 
@@ -107,21 +108,31 @@ func (s *LGService) emitPushEvent(
 	var p map[string]any
 	json.Unmarshal(mergedState, &p)
 
-	if err := s.repository.SaveFromMQTT(ctx, deviceID, "LG", "push", topic, string(mergedState), p); err != nil {
-		s.log.Error("failed to save push message", zap.String("deviceID", deviceID), zap.Error(err))
+	if err := s.repository.Save(
+		ctx,
+		repository.RawMessage{
+			IMEI:        deviceID,
+			Brand:       "LG",
+			MessageType: "push",
+			Topic:       topic,
+			Payload:     p,
+			PayloadRaw:  string(mergedState),
+		},
+	); err != nil {
+		s.log.Error(
+			"failed to save push message",
+			zap.String("deviceID", deviceID),
+			zap.Error(err),
+		)
 	}
 
-	normalized, err := s.stateNormalizer.NormalizeTelemetry(deviceID, deviceType, eventCode, state)
-	if err != nil {
-		s.log.Error("failed to normalize push message", zap.String("deviceID", deviceID), zap.Error(err))
-		return err
-	}
-
-	// TODO: reemplazar este print por el envío real al otro servicio (gRPC)
-	// una vez que esté listo.
-	fmt.Println(string(normalized))
-
-	return nil
+	return s.publishTracking(
+		ctx,
+		deviceID,
+		deviceType,
+		eventCode,
+		state,
+	)
 }
 
 func classifyPushEvent(

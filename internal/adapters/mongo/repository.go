@@ -13,8 +13,7 @@ import (
 )
 
 type RawMessageRepository interface {
-	SaveFromAPI(ctx context.Context, imei, brand, messageType, endpoint string, payloadRaw string, payload map[string]any) error
-	SaveFromMQTT(ctx context.Context, imei, brand, messageType, topic string, payloadRaw string, payload map[string]any) error
+	Save(ctx context.Context, msg RawMessage) error
 }
 
 type RawMessage struct {
@@ -59,39 +58,17 @@ func NewRawMessageService(client *mongo.Client, database, collection string) *Ra
 	}
 }
 
-func (s *RawMessageService) SaveFromAPI(ctx context.Context, imei, brand, messageType, endpoint string, payloadRaw string, payload map[string]any) error {
-	msg := RawMessage{
-		IMEI:        imei,
-		Brand:       brand,
-		MessageType: messageType,
-		Endpoint:    endpoint,
-		Payload:     payload,
-		PayloadRaw:  payloadRaw,
-		ReceivedAt:  time.Now().UTC(),
-	}
+func (s *RawMessageService) Save(
+	ctx context.Context,
+	msg RawMessage,
+) error {
+
+	msg.ReceivedAt = time.Now().UTC()
 
 	_, err := s.collection.InsertOne(ctx, msg)
+
 	if err != nil {
-		return fmt.Errorf("failed to save raw message from API: %w", err)
-	}
-
-	return nil
-}
-
-func (s *RawMessageService) SaveFromMQTT(ctx context.Context, imei, brand, messageType, topic string, payloadRaw string, payload map[string]any) error {
-	msg := RawMessage{
-		IMEI:        imei,
-		Brand:       brand,
-		MessageType: messageType,
-		Topic:       topic,
-		Payload:     payload,
-		PayloadRaw:  payloadRaw,
-		ReceivedAt:  time.Now().UTC(),
-	}
-
-	_, err := s.collection.InsertOne(ctx, msg)
-	if err != nil {
-		return fmt.Errorf("failed to save raw message from MQTT: %w", err)
+		return fmt.Errorf("failed to save raw message: %w", err)
 	}
 
 	return nil

@@ -3,6 +3,7 @@
 import (
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/joho/godotenv"
 	"gopkg.in/yaml.v3"
@@ -30,7 +31,9 @@ type Config struct {
 	} `yaml:"mqtt"`
 
 	GRPC struct {
-		Target string `yaml:"target"`
+		//TODO: ADAPTAR A OFICIAL
+		Address           string        `yaml:"address"`
+		ConnectionTimeout time.Duration `yaml:"connection_timeout"`
 	} `yaml:"grpc"`
 
 	Mongo struct {

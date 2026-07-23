@@ -20,10 +20,10 @@ const (
 )
 
 type NormalizedMessage struct {
-	IMEI       string      `json:"imei"`
-	ReceivedAt string      `json:"receivedAt"`
-	Topic      string      `json:"topic"`
-	Payload    interface{} `json:"payload"`
+	IMEI       string             `json:"imei"`
+	ReceivedAt string             `json:"receivedAt"`
+	Topic      string             `json:"topic"`
+	Payload    LGTelemetryPayload `json:"payload"`
 }
 
 type LGTelemetryPayload struct {

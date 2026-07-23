@@ -1,0 +1,43 @@
+syntax = "proto3";
+
+package tracking.v1;
+
+option go_package = "mqtt-api-service/internal/adapters/grpc/proto/tracking;tracking";
+
+enum EventCode {
+  EVENT_CODE_TRACKING = 0;
+  EVENT_CODE_DEVICE_STATE_CHANGE = 1;
+  EVENT_CODE_POWER_ON = 2;
+  EVENT_CODE_POWER_OFF = 3;
+  EVENT_CODE_TEMPERATURE_CHANGE = 4;
+}
+
+message TemperaturePayload {
+  double current = 1;
+  double target = 2;
+  string unit = 3;
+}
+
+message LGTelemetryPayload {
+  EventCode event_code = 1;
+  string device_type = 2;
+  bool power = 3;
+  TemperaturePayload temperature = 4;
+  optional double humidity = 5;
+}
+
+message NormalizedMessage {
+  string imei = 1;
+  string received_at = 2;
+  string topic = 3;
+  LGTelemetryPayload payload = 4;
+}
+
+message Ack {
+  bool success = 1;
+  string message = 2;
+}
+
+service TrackingService {
+  rpc PublishEvent(NormalizedMessage) returns (Ack);
+}
