@@ -20,10 +20,10 @@ const (
 )
 
 type NormalizedMessage struct {
-	IMEI       string      `json:"imei"`
-	ReceivedAt string      `json:"receivedAt"`
-	Topic      string      `json:"topic"`
-	Payload    interface{} `json:"payload"`
+	DeviceID   string             `json:"device_id"`
+	ReceivedAt string             `json:"receivedAt"`
+	Topic      string             `json:"topic"`
+	Payload    LGTelemetryPayload `json:"payload"`
 }
 
 type LGTelemetryPayload struct {
@@ -83,7 +83,7 @@ func (n *LGStateNormalizer) NormalizeTelemetry(
 
 	//TODO: Corregir topic
 	msg := NormalizedMessage{
-		IMEI:       deviceID,
+		DeviceID:   deviceID,
 		ReceivedAt: time.Now().UTC().Format(time.RFC3339),
 		Topic:      fmt.Sprintf("devices/%s/telemetry", deviceID),
 		Payload:    payload,

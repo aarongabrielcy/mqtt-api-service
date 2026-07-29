@@ -14,6 +14,8 @@ import (
 	//"mqtt-api-service/internal/adapters/mongo"
 
 	adaptercache "mqtt-api-service/internal/adapters/cache"
+	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
+	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
@@ -82,7 +84,26 @@ func main() {
 
 	log.Info("MQTT CONECTADO EXITOSAMENTE")
 
-	lgService, err := lg_service.NewLGService(cfg, log, rawMessageRepo, deviceStateStore)
+	grpcCfg := grpcclient.Config{
+		Address:           cfg.GRPC.Address,
+		ConnectionTimeout: cfg.GRPC.ConnectionTimeout,
+	}
+
+	grpcTrackingClient, err := grpcclient.New(
+		grpcCfg,
+		log,
+	)
+
+	if err != nil {
+		log.Fatal(
+			"failed creating grpc client",
+			zap.Error(err),
+		)
+	}
+
+	defer grpcTrackingClient.Close()
+
+	lgService, err := lg_service.NewLGService(cfg, log, rawMessageRepo, deviceStateStore, grpcTrackingClient)
 	if err != nil {
 		log.Fatal("Error creando LGService", zap.Error(err))
 	}
@@ -116,58 +137,32 @@ func main() {
 	}
 	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
 
-	lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
+	log.Info(
+		"STARTING SERVER",
+		zap.String(
+			"address",
+			cfg.DeviceControlGRPC.Address,
+		),
+	)
+
+	deviceControlServer := grpcserver.NewDeviceControlServer(
+		lgService,
+	)
+
+	go func() {
+		if err := grpcserver.Start(
+			cfg.DeviceControlGRPC.Address,
+			deviceControlServer,
+		); err != nil {
+			log.Fatal(
+				"gRPC server failed",
+				zap.Error(err),
+			)
+		}
+	}()
+
+	//lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
 	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)
-
-	// // 4. Componentes
-	// lgAPIClient := api.NewLGAPIClient(cfg.LGApi, log)
-	// mongoRepo, err := mongo.NewRepository(cfg.Mongo, log)
-	// if err != nil {
-	// 	log.Fatal("Error conectando MongoDB", zap.Error(err))
-	// }
-	// defer mongoRepo.Close(ctx)
-
-	// grpcClient, err := grpc.NewClient(cfg.GRPC, log)
-	// if err != nil {
-	// 	log.Fatal("Error creando gRPC client", zap.Error(err))
-	// }
-
-	// // 5. Parsers y normalizers
-	// lgParser := parser.NewLGMessageParser(log)
-	// messageNormalizer := normalizers.NewLGMessageNormalizer(log)
-	// eventClassifier := normalizers.NewEventClassifier(log)
-
-	// // 6. Servicio principal
-	// lgService := services.NewLGService(
-	// 	mqttClient,
-	// 	lgAPIClient,
-	// 	mongoRepo,
-	// 	grpcClient,
-	// 	lgParser,
-	// 	messageNormalizer,
-	// 	eventClassifier,
-	// 	log,
-	// )
-
-	// // 7. Conectar MQTT
-	// if err := mqttClient.Connect(ctx); err != nil {
-	// 	log.Fatal("Error conectando a MQTT broker LG", zap.Error(err))
-	// }
-	// defer mqttClient.Disconnect(ctx)
-
-	// // 8. Suscribirse a topics de LG
-	// subscriptions := []string{
-	// 	fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID),
-	// 	fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID),
-	// 	fmt.Sprintf("app/clients/%s/outbox", cfg.MQTT.ClientID),
-	// }
-
-	// for _, topic := range subscriptions {
-	// 	if err := mqttClient.Subscribe(ctx, topic, lgService.HandleLGMessage); err != nil {
-	// 		log.Error("Error suscribiendo a topic", zap.String("topic", topic), zap.Error(err))
-	// 	}
-	// 	log.Info("Suscrito a topic", zap.String("topic", topic))
-	// }
 
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)

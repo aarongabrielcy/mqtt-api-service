@@ -44,11 +44,15 @@ lg_api:
 
 # Output: gRPC a tracking-platform
 grpc:
-  target: ${TRACKING_PLATFORM_HOST:-tracking-platform:50051}
+  target: ${TRACKING_PLATFORM_HOST}
+  address: ${TRACKING_PLATFORM_GRPC_ADDRESS}
   timeout: 5s
   max_concurrent_streams: 100
   keepalive_time: 30s
   keepalive_timeout: 5s
+
+device_control_grpc:
+  address: ${DEVICE_CONTROL_HOST}
 
 # MongoDB para raw data
 mongo:

@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"mqtt-api-service/internal/adapters/api/lg"
+	repository "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/application/normalizers"
 	"time"
 
@@ -71,18 +72,38 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 		var p map[string]any
 		json.Unmarshal(raw, &p)
 
-		if err := s.repository.SaveFromAPI(ctx, deviceID, "LG", "telemetry", "/devices/"+deviceID+"/state", string(raw), p); err != nil {
-			s.log.Error("failed to save raw message", zap.String("deviceID", deviceID), zap.Error(err))
+		if err := s.repository.Save(
+			ctx,
+			repository.RawMessage{
+				IMEI:        deviceID,
+				Brand:       "LG",
+				MessageType: "telemetry",
+				Endpoint:    "/devices/" + deviceID + "/state",
+				Payload:     p,
+				PayloadRaw:  string(raw),
+			},
+		); err != nil {
+			s.log.Error(
+				"failed to save raw message",
+				zap.String("deviceID", deviceID),
+				zap.Error(err),
+			)
 		}
 
-		normalized, err := s.stateNormalizer.NormalizeTelemetry(deviceID, device.Device.DeviceInfo.DeviceType, normalizers.EventCodeTracking, state)
-		if err != nil {
-			s.log.Error("failed to normalize telemetry", zap.String("deviceID", deviceID), zap.Error(err))
-			failed++
-			continue
-		}
+		if err := s.publishTracking(
+			ctx,
+			deviceID,
+			device.Device.DeviceInfo.DeviceType,
+			normalizers.EventCodeTracking,
+			state,
+		); err != nil {
 
-		s.log.Info("normalized telemetry ready to send", zap.ByteString("payload", normalized))
+			s.log.Error(
+				"failed publishing telemetry",
+				zap.String("deviceID", deviceID),
+				zap.Error(err),
+			)
+		}
 
 	}
 

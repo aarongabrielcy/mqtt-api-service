@@ -7,6 +7,7 @@ import (
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/parser"
 	"mqtt-api-service/internal/application/normalizers"
+	"mqtt-api-service/internal/domain/interfaces"
 	"mqtt-api-service/internal/infrastructure/config"
 
 	"go.uber.org/zap"
@@ -30,6 +31,8 @@ type LGService struct {
 	clientID string
 
 	devices map[string]*ManagedDevice
+
+	trackingClient interfaces.TrackingClient
 }
 
 type ManagedDevice struct {
@@ -42,7 +45,8 @@ type ManagedDevice struct {
 	LastState *parser.AirConditionerState
 }
 
-func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepository, deviceStateStore *cache.DeviceStateStore) (*LGService, error) {
+func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepository,
+	deviceStateStore *cache.DeviceStateStore, trackingClient interfaces.TrackingClient) (*LGService, error) {
 	lgClient, err := lg.NewLGAPIClient(cfg, log)
 	if err != nil {
 		return nil, err
@@ -55,6 +59,7 @@ func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepo
 		eventService:     lg.NewEventService(lgClient),
 		stateParser:      parser.NewLGStateParser(log),
 		stateNormalizer:  normalizers.NewLGStateNormalizer(log),
+		trackingClient:   trackingClient,
 		deviceStateStore: deviceStateStore,
 		log:              log,
 		clientID:         cfg.LGApi.ClientID,
