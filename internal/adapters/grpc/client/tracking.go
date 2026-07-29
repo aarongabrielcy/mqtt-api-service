@@ -26,21 +26,12 @@ func (c *Client) PublishEvent(
 		)
 	}
 
-	req := &trackingpb.NormalizedMessage{
-		Imei:       msg.IMEI,
-		ReceivedAt: msg.ReceivedAt,
+	req := &trackingpb.RawMessage{
 		Topic:      msg.Topic,
-		Payload: &trackingpb.LGTelemetryPayload{
-			EventCode:  trackingpb.EventCode(msg.Payload.EventCode),
-			DeviceType: msg.Payload.DeviceType,
-			Power:      msg.Payload.Power,
-			Temperature: &trackingpb.TemperaturePayload{
-				Current: msg.Payload.Temperature.Current,
-				Target:  msg.Payload.Temperature.Target,
-				Unit:    msg.Payload.Temperature.Unit,
-			},
-			Humidity: msg.Payload.Humidity,
-		},
+		Payload:    payload,
+		Qos:        -1,
+		Retain:     false,
+		ReceivedAt: msg.ReceivedAt,
 	}
 
 	rpcCtx, cancel := context.WithTimeout(
@@ -49,7 +40,7 @@ func (c *Client) PublishEvent(
 	)
 	defer cancel()
 
-	resp, err := c.tracking.PublishEvent(
+	resp, err := c.tracking.IngestRaw(
 		rpcCtx,
 		req,
 	)
@@ -72,9 +63,9 @@ func (c *Client) PublishEvent(
 
 	c.log.Info(
 		"tracking event published",
-		zap.String("imei", msg.IMEI),
+		zap.String("devvice_id", msg.DeviceID),
 		zap.String("topic", msg.Topic),
-		zap.String("response", resp.GetMessage()),
+		zap.Bool("ok", resp.GetOk()),
 	)
 
 	return nil

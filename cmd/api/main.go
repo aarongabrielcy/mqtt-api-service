@@ -15,6 +15,7 @@ import (
 
 	adaptercache "mqtt-api-service/internal/adapters/cache"
 	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
+	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
@@ -135,6 +136,30 @@ func main() {
 		log.Error("Error suscribiendo a topic", zap.String("topic", inboxTopic), zap.Error(err))
 	}
 	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
+
+	log.Info(
+		"STARTING SERVER",
+		zap.String(
+			"address",
+			cfg.DeviceControlGRPC.Address,
+		),
+	)
+
+	deviceControlServer := grpcserver.NewDeviceControlServer(
+		lgService,
+	)
+
+	go func() {
+		if err := grpcserver.Start(
+			cfg.DeviceControlGRPC.Address,
+			deviceControlServer,
+		); err != nil {
+			log.Fatal(
+				"gRPC server failed",
+				zap.Error(err),
+			)
+		}
+	}()
 
 	//lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
 	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)

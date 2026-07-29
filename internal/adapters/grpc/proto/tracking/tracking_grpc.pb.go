@@ -2,7 +2,7 @@
 // versions:
 // - protoc-gen-go-grpc v1.6.2
 // - protoc             v7.35.1
-// source: internal/adapters/grpc/proto/tracking.proto
+// source: internal/adapters/grpc/proto/tracking/tracking.proto
 
 package tracking
 
@@ -19,14 +19,14 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	TrackingService_PublishEvent_FullMethodName = "/tracking.v1.TrackingService/PublishEvent"
+	TrackingService_IngestRaw_FullMethodName = "/tracking.TrackingService/IngestRaw"
 )
 
 // TrackingServiceClient is the client API for TrackingService service.
 //
 // For semantics around ctx use and closing/ending streaming RPCs, please refer to https://pkg.go.dev/google.golang.org/grpc/?tab=doc#ClientConn.NewStream.
 type TrackingServiceClient interface {
-	PublishEvent(ctx context.Context, in *NormalizedMessage, opts ...grpc.CallOption) (*Ack, error)
+	IngestRaw(ctx context.Context, in *RawMessage, opts ...grpc.CallOption) (*Ack, error)
 }
 
 type trackingServiceClient struct {
@@ -37,10 +37,10 @@ func NewTrackingServiceClient(cc grpc.ClientConnInterface) TrackingServiceClient
 	return &trackingServiceClient{cc}
 }
 
-func (c *trackingServiceClient) PublishEvent(ctx context.Context, in *NormalizedMessage, opts ...grpc.CallOption) (*Ack, error) {
+func (c *trackingServiceClient) IngestRaw(ctx context.Context, in *RawMessage, opts ...grpc.CallOption) (*Ack, error) {
 	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
 	out := new(Ack)
-	err := c.cc.Invoke(ctx, TrackingService_PublishEvent_FullMethodName, in, out, cOpts...)
+	err := c.cc.Invoke(ctx, TrackingService_IngestRaw_FullMethodName, in, out, cOpts...)
 	if err != nil {
 		return nil, err
 	}
@@ -51,7 +51,7 @@ func (c *trackingServiceClient) PublishEvent(ctx context.Context, in *Normalized
 // All implementations must embed UnimplementedTrackingServiceServer
 // for forward compatibility.
 type TrackingServiceServer interface {
-	PublishEvent(context.Context, *NormalizedMessage) (*Ack, error)
+	IngestRaw(context.Context, *RawMessage) (*Ack, error)
 	mustEmbedUnimplementedTrackingServiceServer()
 }
 
@@ -62,8 +62,8 @@ type TrackingServiceServer interface {
 // pointer dereference when methods are called.
 type UnimplementedTrackingServiceServer struct{}
 
-func (UnimplementedTrackingServiceServer) PublishEvent(context.Context, *NormalizedMessage) (*Ack, error) {
-	return nil, status.Error(codes.Unimplemented, "method PublishEvent not implemented")
+func (UnimplementedTrackingServiceServer) IngestRaw(context.Context, *RawMessage) (*Ack, error) {
+	return nil, status.Error(codes.Unimplemented, "method IngestRaw not implemented")
 }
 func (UnimplementedTrackingServiceServer) mustEmbedUnimplementedTrackingServiceServer() {}
 func (UnimplementedTrackingServiceServer) testEmbeddedByValue()                         {}
@@ -86,20 +86,20 @@ func RegisterTrackingServiceServer(s grpc.ServiceRegistrar, srv TrackingServiceS
 	s.RegisterService(&TrackingService_ServiceDesc, srv)
 }
 
-func _TrackingService_PublishEvent_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
-	in := new(NormalizedMessage)
+func _TrackingService_IngestRaw_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(RawMessage)
 	if err := dec(in); err != nil {
 		return nil, err
 	}
 	if interceptor == nil {
-		return srv.(TrackingServiceServer).PublishEvent(ctx, in)
+		return srv.(TrackingServiceServer).IngestRaw(ctx, in)
 	}
 	info := &grpc.UnaryServerInfo{
 		Server:     srv,
-		FullMethod: TrackingService_PublishEvent_FullMethodName,
+		FullMethod: TrackingService_IngestRaw_FullMethodName,
 	}
 	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
-		return srv.(TrackingServiceServer).PublishEvent(ctx, req.(*NormalizedMessage))
+		return srv.(TrackingServiceServer).IngestRaw(ctx, req.(*RawMessage))
 	}
 	return interceptor(ctx, in, info, handler)
 }
@@ -108,14 +108,14 @@ func _TrackingService_PublishEvent_Handler(srv interface{}, ctx context.Context,
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
 var TrackingService_ServiceDesc = grpc.ServiceDesc{
-	ServiceName: "tracking.v1.TrackingService",
+	ServiceName: "tracking.TrackingService",
 	HandlerType: (*TrackingServiceServer)(nil),
 	Methods: []grpc.MethodDesc{
 		{
-			MethodName: "PublishEvent",
-			Handler:    _TrackingService_PublishEvent_Handler,
+			MethodName: "IngestRaw",
+			Handler:    _TrackingService_IngestRaw_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
-	Metadata: "internal/adapters/grpc/proto/tracking.proto",
+	Metadata: "internal/adapters/grpc/proto/tracking/tracking.proto",
 }

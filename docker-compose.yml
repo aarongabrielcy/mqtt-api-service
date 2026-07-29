@@ -20,17 +20,6 @@ services:
     networks:
       - mqtt-api-net
 
-  grpc-mock-server:
-    build:
-      context: ../grpc-mock-server
-      dockerfile: Dockerfile
-    container_name: tracking-grpc-mock
-    restart: unless-stopped
-    ports:
-      - "50051:50051"
-    networks:
-      - mqtt-api-net
-
   mongo:
     image: mongo:7
     container_name: mqtt-api-mongo

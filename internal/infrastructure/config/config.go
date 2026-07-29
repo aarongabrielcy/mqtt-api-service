@@ -36,6 +36,10 @@ type Config struct {
 		ConnectionTimeout time.Duration `yaml:"connection_timeout"`
 	} `yaml:"grpc"`
 
+	DeviceControlGRPC struct {
+		Address string `yaml:"address"`
+	} `yaml:"device_control_grpc"`
+
 	Mongo struct {
 		URI            string `yaml:"uri"`
 		DBName         string `yaml:"db_name"`

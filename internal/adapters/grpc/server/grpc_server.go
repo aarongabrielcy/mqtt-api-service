@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log"
 	"net"
 
 	devicecontrolpb "mqtt-api-service/internal/adapters/grpc/proto/devicecontrol"
@@ -12,6 +13,8 @@ func Start(
 	address string,
 	deviceControlServer *DeviceControlServer,
 ) error {
+
+	log.Printf("Starting DeviceControl gRPC on [%s]", address)
 
 	lis, err := net.Listen("tcp", address)
 	if err != nil {
