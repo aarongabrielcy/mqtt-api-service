@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"log"
 	devicecontrolpb "mqtt-api-service/internal/adapters/grpc/proto/devicecontrol"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 )
@@ -24,6 +25,12 @@ func (s *DeviceControlServer) SetPower(
 	ctx context.Context,
 	req *devicecontrolpb.SetPowerRequest,
 ) (*devicecontrolpb.CommandResponse, error) {
+
+	log.Printf(
+		">>> SetPower called: device=%s power=%v",
+		req.DeviceId,
+		req.Power,
+	)
 
 	err := s.lgService.SetDevicePower(
 		ctx,
@@ -48,6 +55,11 @@ func (s *DeviceControlServer) SetTemperature(
 	ctx context.Context,
 	req *devicecontrolpb.SetTemperatureRequest,
 ) (*devicecontrolpb.CommandResponse, error) {
+	log.Printf(
+		">>> SetTemperature called: device=%s temp=%v",
+		req.DeviceId,
+		req.Temperature,
+	)
 
 	err := s.lgService.SetDeviceTemperature(
 		ctx,

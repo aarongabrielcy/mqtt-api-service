@@ -149,6 +149,11 @@ func main() {
 		lgService,
 	)
 
+	log.Info(
+		"Starting DeviceControl gRPC server",
+		zap.String("address", cfg.DeviceControlGRPC.Address),
+	)
+
 	go func() {
 		if err := grpcserver.Start(
 			cfg.DeviceControlGRPC.Address,
