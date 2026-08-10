@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"log"
+
 	devicecontrolpb "mqtt-api-service/internal/adapters/grpc/proto/devicecontrol"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 )
@@ -55,6 +56,7 @@ func (s *DeviceControlServer) SetTemperature(
 	ctx context.Context,
 	req *devicecontrolpb.SetTemperatureRequest,
 ) (*devicecontrolpb.CommandResponse, error) {
+
 	log.Printf(
 		">>> SetTemperature called: device=%s temp=%v",
 		req.DeviceId,
@@ -77,5 +79,125 @@ func (s *DeviceControlServer) SetTemperature(
 	return &devicecontrolpb.CommandResponse{
 		Success: true,
 		Message: "temperature updated",
+	}, nil
+}
+
+func (s *DeviceControlServer) SetAirFlow(
+	ctx context.Context,
+	req *devicecontrolpb.SetAirFlowRequest,
+) (*devicecontrolpb.CommandResponse, error) {
+
+	log.Printf(
+		">>> SetAirFlow called: device=%s strength=%s",
+		req.DeviceId,
+		req.Strength,
+	)
+
+	err := s.lgService.SetAirFlow(
+		ctx,
+		req.DeviceId,
+		req.Strength,
+	)
+
+	if err != nil {
+		return &devicecontrolpb.CommandResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &devicecontrolpb.CommandResponse{
+		Success: true,
+		Message: "air flow updated",
+	}, nil
+}
+
+func (s *DeviceControlServer) SetOperationMode(
+	ctx context.Context,
+	req *devicecontrolpb.SetOperationModeRequest,
+) (*devicecontrolpb.CommandResponse, error) {
+
+	log.Printf(
+		">>> SetOperationMode called: device=%s mode=%s",
+		req.DeviceId,
+		req.Mode,
+	)
+
+	err := s.lgService.SetOperationMode(
+		ctx,
+		req.DeviceId,
+		req.Mode,
+	)
+
+	if err != nil {
+		return &devicecontrolpb.CommandResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &devicecontrolpb.CommandResponse{
+		Success: true,
+		Message: "operation mode updated",
+	}, nil
+}
+
+func (s *DeviceControlServer) SetOscillation(
+	ctx context.Context,
+	req *devicecontrolpb.SetOscillationRequest,
+) (*devicecontrolpb.CommandResponse, error) {
+
+	log.Printf(
+		">>> SetOscillation called: device=%s enabled=%v",
+		req.DeviceId,
+		req.Enabled,
+	)
+
+	err := s.lgService.SetOscillation(
+		ctx,
+		req.DeviceId,
+		req.Enabled,
+	)
+
+	if err != nil {
+		return &devicecontrolpb.CommandResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &devicecontrolpb.CommandResponse{
+		Success: true,
+		Message: "oscillation updated",
+	}, nil
+}
+
+func (s *DeviceControlServer) SetPowerSave(
+	ctx context.Context,
+	req *devicecontrolpb.SetPowerSaveRequest,
+) (*devicecontrolpb.CommandResponse, error) {
+
+	log.Printf(
+		">>> SetPowerSave called: device=%s enabled=%v",
+		req.DeviceId,
+		req.Enabled,
+	)
+
+	err := s.lgService.SetPowerSave(
+		ctx,
+		req.DeviceId,
+		req.Enabled,
+	)
+
+	if err != nil {
+		return &devicecontrolpb.CommandResponse{
+			Success: false,
+			Message: err.Error(),
+		}, nil
+	}
+
+	return &devicecontrolpb.CommandResponse{
+		Success: true,
+		Message: "power save updated",
 	}, nil
 }

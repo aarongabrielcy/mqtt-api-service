@@ -19,8 +19,12 @@ import (
 const _ = grpc.SupportPackageIsVersion9
 
 const (
-	DeviceControlService_SetPower_FullMethodName       = "/devicecontrol.DeviceControlService/SetPower"
-	DeviceControlService_SetTemperature_FullMethodName = "/devicecontrol.DeviceControlService/SetTemperature"
+	DeviceControlService_SetPower_FullMethodName         = "/devicecontrol.DeviceControlService/SetPower"
+	DeviceControlService_SetTemperature_FullMethodName   = "/devicecontrol.DeviceControlService/SetTemperature"
+	DeviceControlService_SetAirFlow_FullMethodName       = "/devicecontrol.DeviceControlService/SetAirFlow"
+	DeviceControlService_SetOperationMode_FullMethodName = "/devicecontrol.DeviceControlService/SetOperationMode"
+	DeviceControlService_SetOscillation_FullMethodName   = "/devicecontrol.DeviceControlService/SetOscillation"
+	DeviceControlService_SetPowerSave_FullMethodName     = "/devicecontrol.DeviceControlService/SetPowerSave"
 )
 
 // DeviceControlServiceClient is the client API for DeviceControlService service.
@@ -29,6 +33,10 @@ const (
 type DeviceControlServiceClient interface {
 	SetPower(ctx context.Context, in *SetPowerRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 	SetTemperature(ctx context.Context, in *SetTemperatureRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	SetAirFlow(ctx context.Context, in *SetAirFlowRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	SetOperationMode(ctx context.Context, in *SetOperationModeRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	SetOscillation(ctx context.Context, in *SetOscillationRequest, opts ...grpc.CallOption) (*CommandResponse, error)
+	SetPowerSave(ctx context.Context, in *SetPowerSaveRequest, opts ...grpc.CallOption) (*CommandResponse, error)
 }
 
 type deviceControlServiceClient struct {
@@ -59,12 +67,56 @@ func (c *deviceControlServiceClient) SetTemperature(ctx context.Context, in *Set
 	return out, nil
 }
 
+func (c *deviceControlServiceClient) SetAirFlow(ctx context.Context, in *SetAirFlowRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DeviceControlService_SetAirFlow_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *deviceControlServiceClient) SetOperationMode(ctx context.Context, in *SetOperationModeRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DeviceControlService_SetOperationMode_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *deviceControlServiceClient) SetOscillation(ctx context.Context, in *SetOscillationRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DeviceControlService_SetOscillation_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
+func (c *deviceControlServiceClient) SetPowerSave(ctx context.Context, in *SetPowerSaveRequest, opts ...grpc.CallOption) (*CommandResponse, error) {
+	cOpts := append([]grpc.CallOption{grpc.StaticMethod()}, opts...)
+	out := new(CommandResponse)
+	err := c.cc.Invoke(ctx, DeviceControlService_SetPowerSave_FullMethodName, in, out, cOpts...)
+	if err != nil {
+		return nil, err
+	}
+	return out, nil
+}
+
 // DeviceControlServiceServer is the server API for DeviceControlService service.
 // All implementations must embed UnimplementedDeviceControlServiceServer
 // for forward compatibility.
 type DeviceControlServiceServer interface {
 	SetPower(context.Context, *SetPowerRequest) (*CommandResponse, error)
 	SetTemperature(context.Context, *SetTemperatureRequest) (*CommandResponse, error)
+	SetAirFlow(context.Context, *SetAirFlowRequest) (*CommandResponse, error)
+	SetOperationMode(context.Context, *SetOperationModeRequest) (*CommandResponse, error)
+	SetOscillation(context.Context, *SetOscillationRequest) (*CommandResponse, error)
+	SetPowerSave(context.Context, *SetPowerSaveRequest) (*CommandResponse, error)
 	mustEmbedUnimplementedDeviceControlServiceServer()
 }
 
@@ -80,6 +132,18 @@ func (UnimplementedDeviceControlServiceServer) SetPower(context.Context, *SetPow
 }
 func (UnimplementedDeviceControlServiceServer) SetTemperature(context.Context, *SetTemperatureRequest) (*CommandResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "method SetTemperature not implemented")
+}
+func (UnimplementedDeviceControlServiceServer) SetAirFlow(context.Context, *SetAirFlowRequest) (*CommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetAirFlow not implemented")
+}
+func (UnimplementedDeviceControlServiceServer) SetOperationMode(context.Context, *SetOperationModeRequest) (*CommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetOperationMode not implemented")
+}
+func (UnimplementedDeviceControlServiceServer) SetOscillation(context.Context, *SetOscillationRequest) (*CommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetOscillation not implemented")
+}
+func (UnimplementedDeviceControlServiceServer) SetPowerSave(context.Context, *SetPowerSaveRequest) (*CommandResponse, error) {
+	return nil, status.Error(codes.Unimplemented, "method SetPowerSave not implemented")
 }
 func (UnimplementedDeviceControlServiceServer) mustEmbedUnimplementedDeviceControlServiceServer() {}
 func (UnimplementedDeviceControlServiceServer) testEmbeddedByValue()                              {}
@@ -138,6 +202,78 @@ func _DeviceControlService_SetTemperature_Handler(srv interface{}, ctx context.C
 	return interceptor(ctx, in, info, handler)
 }
 
+func _DeviceControlService_SetAirFlow_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetAirFlowRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeviceControlServiceServer).SetAirFlow(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeviceControlService_SetAirFlow_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeviceControlServiceServer).SetAirFlow(ctx, req.(*SetAirFlowRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DeviceControlService_SetOperationMode_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetOperationModeRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeviceControlServiceServer).SetOperationMode(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeviceControlService_SetOperationMode_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeviceControlServiceServer).SetOperationMode(ctx, req.(*SetOperationModeRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DeviceControlService_SetOscillation_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetOscillationRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeviceControlServiceServer).SetOscillation(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeviceControlService_SetOscillation_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeviceControlServiceServer).SetOscillation(ctx, req.(*SetOscillationRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
+func _DeviceControlService_SetPowerSave_Handler(srv interface{}, ctx context.Context, dec func(interface{}) error, interceptor grpc.UnaryServerInterceptor) (interface{}, error) {
+	in := new(SetPowerSaveRequest)
+	if err := dec(in); err != nil {
+		return nil, err
+	}
+	if interceptor == nil {
+		return srv.(DeviceControlServiceServer).SetPowerSave(ctx, in)
+	}
+	info := &grpc.UnaryServerInfo{
+		Server:     srv,
+		FullMethod: DeviceControlService_SetPowerSave_FullMethodName,
+	}
+	handler := func(ctx context.Context, req interface{}) (interface{}, error) {
+		return srv.(DeviceControlServiceServer).SetPowerSave(ctx, req.(*SetPowerSaveRequest))
+	}
+	return interceptor(ctx, in, info, handler)
+}
+
 // DeviceControlService_ServiceDesc is the grpc.ServiceDesc for DeviceControlService service.
 // It's only intended for direct use with grpc.RegisterService,
 // and not to be introspected or modified (even as a copy)
@@ -152,6 +288,22 @@ var DeviceControlService_ServiceDesc = grpc.ServiceDesc{
 		{
 			MethodName: "SetTemperature",
 			Handler:    _DeviceControlService_SetTemperature_Handler,
+		},
+		{
+			MethodName: "SetAirFlow",
+			Handler:    _DeviceControlService_SetAirFlow_Handler,
+		},
+		{
+			MethodName: "SetOperationMode",
+			Handler:    _DeviceControlService_SetOperationMode_Handler,
+		},
+		{
+			MethodName: "SetOscillation",
+			Handler:    _DeviceControlService_SetOscillation_Handler,
+		},
+		{
+			MethodName: "SetPowerSave",
+			Handler:    _DeviceControlService_SetPowerSave_Handler,
 		},
 	},
 	Streams:  []grpc.StreamDesc{},
