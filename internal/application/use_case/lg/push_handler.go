@@ -105,6 +105,19 @@ func (s *LGService) emitPushEvent(
 	state *parser.AirConditionerState,
 	eventCode normalizers.EventCode,
 ) error {
+
+	if err := s.deviceStateStore.SetSnapshot(
+		ctx,
+		deviceID,
+		mergedState,
+	); err != nil {
+		s.log.Error(
+			"failed to update device state in redis",
+			zap.String("deviceID", deviceID),
+			zap.Error(err),
+		)
+	}
+
 	var p map[string]any
 	json.Unmarshal(mergedState, &p)
 
@@ -141,27 +154,73 @@ func classifyPushEvent(
 	newState parser.AirConditionerState,
 	hasPreviousState bool,
 ) (eventCode normalizers.EventCode, shouldEmit bool, err error) {
+
 	var reportMap map[string]json.RawMessage
+
 	if err := json.Unmarshal(report, &reportMap); err != nil {
-		return 0, false, fmt.Errorf("failed to inspect report fields: %w", err)
+		return 0, false, fmt.Errorf(
+			"failed to inspect report fields: %w",
+			err,
+		)
 	}
 
 	if operationRaw, ok := reportMap["operation"]; ok && len(reportMap) == 1 {
+
 		var operation struct {
 			AirConOperationMode string `json:"airConOperationMode"`
 		}
+
 		if err := json.Unmarshal(operationRaw, &operation); err != nil {
-			return 0, false, fmt.Errorf("failed to parse operation field: %w", err)
+			return 0, false, fmt.Errorf(
+				"failed to parse operation field: %w",
+				err,
+			)
 		}
 
 		switch operation.AirConOperationMode {
 		case "POWER_ON":
 			return normalizers.EventCodePowerOn, true, nil
+
 		case "POWER_OFF":
 			return normalizers.EventCodePowerOff, true, nil
+
 		default:
 			return normalizers.EventCodeTracking, true, nil
 		}
+	}
+
+	if _, ok := reportMap["airConJobMode"]; ok &&
+		hasPreviousState &&
+		previousState.AirConJobMode.CurrentJobMode !=
+			newState.AirConJobMode.CurrentJobMode {
+
+		return normalizers.EventCodeOperationModeChange, true, nil
+	}
+
+	if _, ok := reportMap["airFlow"]; ok &&
+		hasPreviousState &&
+		(previousState.AirFlow.WindStrength !=
+			newState.AirFlow.WindStrength ||
+			previousState.AirFlow.WindStrengthDetail !=
+				newState.AirFlow.WindStrengthDetail) {
+
+		return normalizers.EventCodeAirFlowChange, true, nil
+	}
+
+	if _, ok := reportMap["windDirection"]; ok &&
+		hasPreviousState &&
+		previousState.WindDirection.RotateUpDown !=
+			newState.WindDirection.RotateUpDown {
+
+		return normalizers.EventCodeOscillationChange, true, nil
+	}
+
+	if _, ok := reportMap["powerSave"]; ok &&
+		hasPreviousState &&
+		previousState.PowerSave.PowerSaveEnabled !=
+			newState.PowerSave.PowerSaveEnabled {
+
+		return normalizers.EventCodePowerSaveChange, true, nil
 	}
 
 	allowedTemperatureKeys := map[string]bool{
@@ -170,6 +229,7 @@ func classifyPushEvent(
 	}
 
 	isTemperatureOnlyReport := len(reportMap) > 0
+
 	for key := range reportMap {
 		if !allowedTemperatureKeys[key] {
 			isTemperatureOnlyReport = false
@@ -177,8 +237,11 @@ func classifyPushEvent(
 		}
 	}
 
-	if isTemperatureOnlyReport && hasPreviousState &&
-		previousState.Temperature.TargetTemperature != newState.Temperature.TargetTemperature {
+	if isTemperatureOnlyReport &&
+		hasPreviousState &&
+		previousState.Temperature.TargetTemperature !=
+			newState.Temperature.TargetTemperature {
+
 		return normalizers.EventCodeTemperatureChange, true, nil
 	}
 

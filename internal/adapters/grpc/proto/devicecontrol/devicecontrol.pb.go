@@ -125,6 +125,216 @@ func (x *SetTemperatureRequest) GetTemperature() float64 {
 	return 0
 }
 
+type SetAirFlowRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	// LOW, MID, HIGH, AUTO
+	Strength      string `protobuf:"bytes,2,opt,name=strength,proto3" json:"strength,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetAirFlowRequest) Reset() {
+	*x = SetAirFlowRequest{}
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[2]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetAirFlowRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetAirFlowRequest) ProtoMessage() {}
+
+func (x *SetAirFlowRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[2]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetAirFlowRequest.ProtoReflect.Descriptor instead.
+func (*SetAirFlowRequest) Descriptor() ([]byte, []int) {
+	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{2}
+}
+
+func (x *SetAirFlowRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *SetAirFlowRequest) GetStrength() string {
+	if x != nil {
+		return x.Strength
+	}
+	return ""
+}
+
+type SetOperationModeRequest struct {
+	state    protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	// COOL, AUTO, FAN, AIR_DRY
+	Mode          string `protobuf:"bytes,2,opt,name=mode,proto3" json:"mode,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOperationModeRequest) Reset() {
+	*x = SetOperationModeRequest{}
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[3]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOperationModeRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOperationModeRequest) ProtoMessage() {}
+
+func (x *SetOperationModeRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[3]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOperationModeRequest.ProtoReflect.Descriptor instead.
+func (*SetOperationModeRequest) Descriptor() ([]byte, []int) {
+	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{3}
+}
+
+func (x *SetOperationModeRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *SetOperationModeRequest) GetMode() string {
+	if x != nil {
+		return x.Mode
+	}
+	return ""
+}
+
+type SetOscillationRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetOscillationRequest) Reset() {
+	*x = SetOscillationRequest{}
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[4]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetOscillationRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetOscillationRequest) ProtoMessage() {}
+
+func (x *SetOscillationRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[4]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetOscillationRequest.ProtoReflect.Descriptor instead.
+func (*SetOscillationRequest) Descriptor() ([]byte, []int) {
+	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{4}
+}
+
+func (x *SetOscillationRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *SetOscillationRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
+type SetPowerSaveRequest struct {
+	state         protoimpl.MessageState `protogen:"open.v1"`
+	DeviceId      string                 `protobuf:"bytes,1,opt,name=device_id,json=deviceId,proto3" json:"device_id,omitempty"`
+	Enabled       bool                   `protobuf:"varint,2,opt,name=enabled,proto3" json:"enabled,omitempty"`
+	unknownFields protoimpl.UnknownFields
+	sizeCache     protoimpl.SizeCache
+}
+
+func (x *SetPowerSaveRequest) Reset() {
+	*x = SetPowerSaveRequest{}
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[5]
+	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+	ms.StoreMessageInfo(mi)
+}
+
+func (x *SetPowerSaveRequest) String() string {
+	return protoimpl.X.MessageStringOf(x)
+}
+
+func (*SetPowerSaveRequest) ProtoMessage() {}
+
+func (x *SetPowerSaveRequest) ProtoReflect() protoreflect.Message {
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[5]
+	if x != nil {
+		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
+		if ms.LoadMessageInfo() == nil {
+			ms.StoreMessageInfo(mi)
+		}
+		return ms
+	}
+	return mi.MessageOf(x)
+}
+
+// Deprecated: Use SetPowerSaveRequest.ProtoReflect.Descriptor instead.
+func (*SetPowerSaveRequest) Descriptor() ([]byte, []int) {
+	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{5}
+}
+
+func (x *SetPowerSaveRequest) GetDeviceId() string {
+	if x != nil {
+		return x.DeviceId
+	}
+	return ""
+}
+
+func (x *SetPowerSaveRequest) GetEnabled() bool {
+	if x != nil {
+		return x.Enabled
+	}
+	return false
+}
+
 type CommandResponse struct {
 	state         protoimpl.MessageState `protogen:"open.v1"`
 	Success       bool                   `protobuf:"varint,1,opt,name=success,proto3" json:"success,omitempty"`
@@ -135,7 +345,7 @@ type CommandResponse struct {
 
 func (x *CommandResponse) Reset() {
 	*x = CommandResponse{}
-	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[2]
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[6]
 	ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 	ms.StoreMessageInfo(mi)
 }
@@ -147,7 +357,7 @@ func (x *CommandResponse) String() string {
 func (*CommandResponse) ProtoMessage() {}
 
 func (x *CommandResponse) ProtoReflect() protoreflect.Message {
-	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[2]
+	mi := &file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes[6]
 	if x != nil {
 		ms := protoimpl.X.MessageStateOf(protoimpl.Pointer(x))
 		if ms.LoadMessageInfo() == nil {
@@ -160,7 +370,7 @@ func (x *CommandResponse) ProtoReflect() protoreflect.Message {
 
 // Deprecated: Use CommandResponse.ProtoReflect.Descriptor instead.
 func (*CommandResponse) Descriptor() ([]byte, []int) {
-	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{2}
+	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescGZIP(), []int{6}
 }
 
 func (x *CommandResponse) GetSuccess() bool {
@@ -187,13 +397,30 @@ const file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDes
 	"\x05power\x18\x02 \x01(\bR\x05power\"V\n" +
 	"\x15SetTemperatureRequest\x12\x1b\n" +
 	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12 \n" +
-	"\vtemperature\x18\x02 \x01(\x01R\vtemperature\"E\n" +
+	"\vtemperature\x18\x02 \x01(\x01R\vtemperature\"L\n" +
+	"\x11SetAirFlowRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x1a\n" +
+	"\bstrength\x18\x02 \x01(\tR\bstrength\"J\n" +
+	"\x17SetOperationModeRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x12\n" +
+	"\x04mode\x18\x02 \x01(\tR\x04mode\"N\n" +
+	"\x15SetOscillationRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\"L\n" +
+	"\x13SetPowerSaveRequest\x12\x1b\n" +
+	"\tdevice_id\x18\x01 \x01(\tR\bdeviceId\x12\x18\n" +
+	"\aenabled\x18\x02 \x01(\bR\aenabled\"E\n" +
 	"\x0fCommandResponse\x12\x18\n" +
 	"\asuccess\x18\x01 \x01(\bR\asuccess\x12\x18\n" +
-	"\amessage\x18\x02 \x01(\tR\amessage2\xba\x01\n" +
+	"\amessage\x18\x02 \x01(\tR\amessage2\x92\x04\n" +
 	"\x14DeviceControlService\x12J\n" +
 	"\bSetPower\x12\x1e.devicecontrol.SetPowerRequest\x1a\x1e.devicecontrol.CommandResponse\x12V\n" +
-	"\x0eSetTemperature\x12$.devicecontrol.SetTemperatureRequest\x1a\x1e.devicecontrol.CommandResponseB=Z;mqtt-api-service/internal/adapters/grpc/proto/devicecontrolb\x06proto3"
+	"\x0eSetTemperature\x12$.devicecontrol.SetTemperatureRequest\x1a\x1e.devicecontrol.CommandResponse\x12N\n" +
+	"\n" +
+	"SetAirFlow\x12 .devicecontrol.SetAirFlowRequest\x1a\x1e.devicecontrol.CommandResponse\x12Z\n" +
+	"\x10SetOperationMode\x12&.devicecontrol.SetOperationModeRequest\x1a\x1e.devicecontrol.CommandResponse\x12V\n" +
+	"\x0eSetOscillation\x12$.devicecontrol.SetOscillationRequest\x1a\x1e.devicecontrol.CommandResponse\x12R\n" +
+	"\fSetPowerSave\x12\".devicecontrol.SetPowerSaveRequest\x1a\x1e.devicecontrol.CommandResponseB=Z;mqtt-api-service/internal/adapters/grpc/proto/devicecontrolb\x06proto3"
 
 var (
 	file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescOnce sync.Once
@@ -207,19 +434,31 @@ func file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDesc
 	return file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDescData
 }
 
-var file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes = make([]protoimpl.MessageInfo, 3)
+var file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_msgTypes = make([]protoimpl.MessageInfo, 7)
 var file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_goTypes = []any{
-	(*SetPowerRequest)(nil),       // 0: devicecontrol.SetPowerRequest
-	(*SetTemperatureRequest)(nil), // 1: devicecontrol.SetTemperatureRequest
-	(*CommandResponse)(nil),       // 2: devicecontrol.CommandResponse
+	(*SetPowerRequest)(nil),         // 0: devicecontrol.SetPowerRequest
+	(*SetTemperatureRequest)(nil),   // 1: devicecontrol.SetTemperatureRequest
+	(*SetAirFlowRequest)(nil),       // 2: devicecontrol.SetAirFlowRequest
+	(*SetOperationModeRequest)(nil), // 3: devicecontrol.SetOperationModeRequest
+	(*SetOscillationRequest)(nil),   // 4: devicecontrol.SetOscillationRequest
+	(*SetPowerSaveRequest)(nil),     // 5: devicecontrol.SetPowerSaveRequest
+	(*CommandResponse)(nil),         // 6: devicecontrol.CommandResponse
 }
 var file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_depIdxs = []int32{
 	0, // 0: devicecontrol.DeviceControlService.SetPower:input_type -> devicecontrol.SetPowerRequest
 	1, // 1: devicecontrol.DeviceControlService.SetTemperature:input_type -> devicecontrol.SetTemperatureRequest
-	2, // 2: devicecontrol.DeviceControlService.SetPower:output_type -> devicecontrol.CommandResponse
-	2, // 3: devicecontrol.DeviceControlService.SetTemperature:output_type -> devicecontrol.CommandResponse
-	2, // [2:4] is the sub-list for method output_type
-	0, // [0:2] is the sub-list for method input_type
+	2, // 2: devicecontrol.DeviceControlService.SetAirFlow:input_type -> devicecontrol.SetAirFlowRequest
+	3, // 3: devicecontrol.DeviceControlService.SetOperationMode:input_type -> devicecontrol.SetOperationModeRequest
+	4, // 4: devicecontrol.DeviceControlService.SetOscillation:input_type -> devicecontrol.SetOscillationRequest
+	5, // 5: devicecontrol.DeviceControlService.SetPowerSave:input_type -> devicecontrol.SetPowerSaveRequest
+	6, // 6: devicecontrol.DeviceControlService.SetPower:output_type -> devicecontrol.CommandResponse
+	6, // 7: devicecontrol.DeviceControlService.SetTemperature:output_type -> devicecontrol.CommandResponse
+	6, // 8: devicecontrol.DeviceControlService.SetAirFlow:output_type -> devicecontrol.CommandResponse
+	6, // 9: devicecontrol.DeviceControlService.SetOperationMode:output_type -> devicecontrol.CommandResponse
+	6, // 10: devicecontrol.DeviceControlService.SetOscillation:output_type -> devicecontrol.CommandResponse
+	6, // 11: devicecontrol.DeviceControlService.SetPowerSave:output_type -> devicecontrol.CommandResponse
+	6, // [6:12] is the sub-list for method output_type
+	0, // [0:6] is the sub-list for method input_type
 	0, // [0:0] is the sub-list for extension type_name
 	0, // [0:0] is the sub-list for extension extendee
 	0, // [0:0] is the sub-list for field type_name
@@ -236,7 +475,7 @@ func file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_init() 
 			GoPackagePath: reflect.TypeOf(x{}).PkgPath(),
 			RawDescriptor: unsafe.Slice(unsafe.StringData(file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDesc), len(file_internal_adapters_grpc_proto_devicecontrol_devicecontrol_proto_rawDesc)),
 			NumEnums:      0,
-			NumMessages:   3,
+			NumMessages:   7,
 			NumExtensions: 0,
 			NumServices:   1,
 		},

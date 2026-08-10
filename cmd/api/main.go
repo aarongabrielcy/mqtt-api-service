@@ -94,6 +94,11 @@ func main() {
 		log,
 	)
 
+	log.Info(
+		"Starting tracking gRPC client",
+		zap.String("tracking address", cfg.GRPC.Address),
+	)
+
 	if err != nil {
 		log.Fatal(
 			"failed creating grpc client",
@@ -147,6 +152,11 @@ func main() {
 
 	deviceControlServer := grpcserver.NewDeviceControlServer(
 		lgService,
+	)
+
+	log.Info(
+		"Starting DeviceControl gRPC server",
+		zap.String("address", cfg.DeviceControlGRPC.Address),
 	)
 
 	go func() {

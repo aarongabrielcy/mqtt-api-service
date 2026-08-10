@@ -12,7 +12,7 @@ import (
 	"go.uber.org/zap"
 )
 
-func (c *Client) PublishEvent(
+func (c *Client) IngestRaw(
 	ctx context.Context,
 	payload []byte,
 ) error {
@@ -47,7 +47,7 @@ func (c *Client) PublishEvent(
 
 	if err != nil {
 		c.log.Error(
-			"failed to publish tracking event",
+			"failed to ingest tracking event",
 			zap.Error(err),
 			zap.String(
 				"grpc_state",
@@ -56,14 +56,14 @@ func (c *Client) PublishEvent(
 		)
 
 		return fmt.Errorf(
-			"failed to publish tracking event: %w",
+			"failed to ingest tracking event: %w",
 			err,
 		)
 	}
 
 	c.log.Info(
-		"tracking event published",
-		zap.String("devvice_id", msg.DeviceID),
+		"tracking event ingested",
+		zap.String("device_id", msg.DeviceID),
 		zap.String("topic", msg.Topic),
 		zap.Bool("ok", resp.GetOk()),
 	)

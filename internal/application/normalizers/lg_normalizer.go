@@ -17,6 +17,10 @@ const (
 	EventCodePowerOn
 	EventCodePowerOff
 	EventCodeTemperatureChange
+	EventCodeOperationModeChange
+	EventCodeAirFlowChange
+	EventCodeOscillationChange
+	EventCodePowerSaveChange
 )
 
 type NormalizedMessage struct {
@@ -27,13 +31,17 @@ type NormalizedMessage struct {
 }
 
 type LGTelemetryPayload struct {
-	EventCode  EventCode `json:"eventCode"`
-	DeviceType string    `json:"deviceType"`
-	Power      bool      `json:"power"`
-
+	EventCode   EventCode          `json:"eventCode"`
+	DeviceType  string             `json:"deviceType"`
+	Power       bool               `json:"power"`
 	Temperature TemperaturePayload `json:"temperature"`
+	Humidity    *float64           `json:"humidity,omitempty"`
 
-	Humidity *float64 `json:"humidity,omitempty"`
+	OperationMode string `json:"operationMode,omitempty"`
+	AirFlow       string `json:"airFlow,omitempty"`
+	AirFlowDetail string `json:"airFlowDetail,omitempty"`
+	Oscillation   bool   `json:"oscillation"`
+	PowerSave     bool   `json:"powerSave"`
 }
 
 type LGPushTelemetry struct {
@@ -73,9 +81,14 @@ func (n *LGStateNormalizer) NormalizeTelemetry(
 	}
 
 	payload := LGTelemetryPayload{
-		EventCode:  eventCode,
-		DeviceType: deviceType,
-		Power:      state.Operation.AirConOperationMode == "POWER_ON",
+		EventCode:     eventCode,
+		DeviceType:    deviceType,
+		Power:         state.Operation.AirConOperationMode == "POWER_ON",
+		OperationMode: state.AirConJobMode.CurrentJobMode,
+		AirFlow:       state.AirFlow.WindStrength,
+		AirFlowDetail: state.AirFlow.WindStrengthDetail,
+		Oscillation:   state.WindDirection.RotateUpDown,
+		PowerSave:     state.PowerSave.PowerSaveEnabled,
 	}
 	payload.Temperature.Current = state.Temperature.CurrentTemperature
 	payload.Temperature.Target = state.Temperature.TargetTemperature
