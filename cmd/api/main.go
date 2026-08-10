@@ -94,6 +94,11 @@ func main() {
 		log,
 	)
 
+	log.Info(
+		"Starting tracking gRPC client",
+		zap.String("tracking address", cfg.GRPC.Address),
+	)
+
 	if err != nil {
 		log.Fatal(
 			"failed creating grpc client",

@@ -5,7 +5,7 @@ import (
 )
 
 type TrackingClient interface {
-	PublishEvent(
+	IngestRaw(
 		ctx context.Context,
 		payload []byte,
 	) error

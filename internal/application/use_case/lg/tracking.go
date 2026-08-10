@@ -35,7 +35,7 @@ func (s *LGService) publishTracking(
 		return nil
 	}
 
-	if err := s.trackingClient.PublishEvent(
+	if err := s.trackingClient.IngestRaw(
 		ctx,
 		normalized,
 	); err != nil {
