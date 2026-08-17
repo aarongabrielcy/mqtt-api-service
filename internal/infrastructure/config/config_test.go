@@ -1,6 +1,9 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 // clearEcosystemEnv fuerza a "" las variables con default esperado, para
 // que LoadConfig las trate como no definidas (getEnv trata "" como unset).
@@ -17,6 +20,10 @@ func clearEcosystemEnv(t *testing.T) {
 		"COUNTRY_CODE",
 		"LANGUAGE_CODE",
 		"SERVICE_PHASE",
+		"TRACKING_GRPC_REQUEST_TIMEOUT_SECONDS",
+		"TRACKING_GRPC_MAX_ATTEMPTS",
+		"TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS",
+		"TRACKING_GRPC_RETRY_MAX_BACKOFF_MS",
 	} {
 		t.Setenv(key, "")
 	}
@@ -53,6 +60,19 @@ func TestLoadConfig_DefaultsWhenEnvUnset(t *testing.T) {
 			t.Errorf("%s = %q, want %q", c.name, c.got, c.want)
 		}
 	}
+
+	if cfg.GRPC.RequestTimeout != 10*time.Second {
+		t.Errorf("GRPC.RequestTimeout = %v, want 10s", cfg.GRPC.RequestTimeout)
+	}
+	if cfg.GRPC.MaxAttempts != 3 {
+		t.Errorf("GRPC.MaxAttempts = %v, want 3", cfg.GRPC.MaxAttempts)
+	}
+	if cfg.GRPC.RetryInitialBackoff != 1000*time.Millisecond {
+		t.Errorf("GRPC.RetryInitialBackoff = %v, want 1000ms", cfg.GRPC.RetryInitialBackoff)
+	}
+	if cfg.GRPC.RetryMaxBackoff != 4000*time.Millisecond {
+		t.Errorf("GRPC.RetryMaxBackoff = %v, want 4000ms", cfg.GRPC.RetryMaxBackoff)
+	}
 }
 
 func TestLoadConfig_ReadsFromEnv(t *testing.T) {
@@ -66,6 +86,10 @@ func TestLoadConfig_ReadsFromEnv(t *testing.T) {
 	t.Setenv("LG_CLIENT_ID", "test-lg-client-id")
 	t.Setenv("LG_MQTT_CLIENT_ID", "test-mqtt-client-id")
 	t.Setenv("LG_API_CLIENT_ID", "test-api-client-id")
+	t.Setenv("TRACKING_GRPC_REQUEST_TIMEOUT_SECONDS", "20")
+	t.Setenv("TRACKING_GRPC_MAX_ATTEMPTS", "5")
+	t.Setenv("TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS", "500")
+	t.Setenv("TRACKING_GRPC_RETRY_MAX_BACKOFF_MS", "8000")
 
 	cfg, err := LoadConfig()
 	if err != nil {
@@ -99,5 +123,32 @@ func TestLoadConfig_ReadsFromEnv(t *testing.T) {
 	}
 	if cfg.LGApi.ClientID != "test-api-client-id" {
 		t.Errorf("LGApi.ClientID = %q, want test-api-client-id", cfg.LGApi.ClientID)
+	}
+
+	if cfg.GRPC.RequestTimeout != 20*time.Second {
+		t.Errorf("GRPC.RequestTimeout = %v, want 20s", cfg.GRPC.RequestTimeout)
+	}
+	if cfg.GRPC.MaxAttempts != 5 {
+		t.Errorf("GRPC.MaxAttempts = %v, want 5", cfg.GRPC.MaxAttempts)
+	}
+	if cfg.GRPC.RetryInitialBackoff != 500*time.Millisecond {
+		t.Errorf("GRPC.RetryInitialBackoff = %v, want 500ms", cfg.GRPC.RetryInitialBackoff)
+	}
+	if cfg.GRPC.RetryMaxBackoff != 8000*time.Millisecond {
+		t.Errorf("GRPC.RetryMaxBackoff = %v, want 8000ms", cfg.GRPC.RetryMaxBackoff)
+	}
+}
+
+func TestLoadConfig_InvalidIntEnvFallsBackToDefault(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("TRACKING_GRPC_MAX_ATTEMPTS", "not-a-number")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.GRPC.MaxAttempts != 3 {
+		t.Errorf("GRPC.MaxAttempts = %v, want fallback 3 for invalid input", cfg.GRPC.MaxAttempts)
 	}
 }

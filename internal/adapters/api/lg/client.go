@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 
@@ -25,6 +26,24 @@ type LGAPIClient struct {
 type APIError struct {
 	StatusCode int
 	Body       string
+	Code       string
+	Message    string
+}
+
+// lgNotConnectedHTTPStatus / lgNotConnectedErrorCode identifican la
+// respuesta esperada de la LG API cuando un dispositivo está desconectado
+// (status=416, error.code=1222, message="Not connected device"). Esta es
+// una condición operativa normal, no un error crítico del servicio.
+const (
+	lgNotConnectedHTTPStatus = 416
+	lgNotConnectedErrorCode  = "1222"
+)
+
+// IsDeviceNotConnected identifica la respuesta esperada de la LG API cuando
+// el dispositivo está desconectado (offline en la app LG ThinQ), para poder
+// tratarla como una condición operativa normal en vez de un error crítico.
+func (e *APIError) IsDeviceNotConnected() bool {
+	return e.StatusCode == lgNotConnectedHTTPStatus && e.Code == lgNotConnectedErrorCode
 }
 
 func NewLGAPIClient(cfg *config.Config, log *zap.Logger) (*LGAPIClient, error) {
@@ -111,9 +130,13 @@ func (c *LGAPIClient) doRequest(
 			respBody = respBody[:500]
 		}
 
+		code, message := parseLGErrorBody(respBody)
+
 		return &APIError{
 			StatusCode: resp.StatusCode,
 			Body:       string(respBody),
+			Code:       code,
+			Message:    message,
 		}
 	}
 
@@ -135,4 +158,39 @@ func (c *LGAPIClient) doRequest(
 
 func (e *APIError) Error() string {
 	return fmt.Sprintf("LG API error status=%d body=%s", e.StatusCode, e.Body)
+}
+
+// parseLGErrorBody extrae code/message del body de error de la LG API,
+// tolerando tanto {"error":{"code":...,"message":...}} como
+// {"code":...,"message":...} a nivel raíz, y tanto código numérico como
+// string (LG no documenta el shape exacto de forma consistente).
+func parseLGErrorBody(body []byte) (code, message string) {
+	var generic map[string]interface{}
+	if err := json.Unmarshal(body, &generic); err != nil {
+		return "", ""
+	}
+
+	if errObj, ok := generic["error"].(map[string]interface{}); ok {
+		code = stringifyAny(errObj["code"])
+		message = stringifyAny(errObj["message"])
+		if code != "" || message != "" {
+			return code, message
+		}
+	}
+
+	return stringifyAny(generic["code"]), stringifyAny(generic["message"])
+}
+
+func stringifyAny(v interface{}) string {
+	switch t := v.(type) {
+	case string:
+		return t
+	case float64:
+		if t == float64(int64(t)) {
+			return strconv.FormatInt(int64(t), 10)
+		}
+		return strconv.FormatFloat(t, 'f', -1, 64)
+	default:
+		return ""
+	}
 }

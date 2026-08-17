@@ -138,6 +138,94 @@ Topic = devices/<deviceID>/telemetry
 `climate.humidity` siempre es `null`: LG no expone humedad en el estado de
 aire acondicionado que consume este servicio.
 
+## Operational behavior (FASE LG-1B)
+
+Mejoras de resiliencia de arranque y diagnóstico agregadas tras observar
+comportamiento real en pruebas (DNS de Docker no resuelto todavía en el
+primer arranque, ingestion-service tardando en estar listo, LG API
+reportando dispositivos desconectados).
+
+### Mongo startup retry
+`internal/adapters/mongo/repository.go` (`NewMongoClient`) ya no falla
+`fatal` en el primer intento. Reintenta connect+ping con backoff 1s→2s→4s→8s
+(tope 10s) durante hasta 90s antes de rendirse. Cada intento fallido se
+loguea como `warn` ("mongo connection retry"); solo si se agota el tiempo
+máximo se loguea `error` ("failed to connect to mongo after retries") y el
+proceso termina (igual que antes, pero ahora tolera el DNS/startup timing
+típico de arrancar junto con el contenedor de Mongo). Al conectar, loguea
+"connected to mongo" con la URI **sin credenciales** (usuario/password se
+quitan antes de loguear), db name y collection name.
+
+### Tracking gRPC: timeout + retry corto
+`internal/adapters/grpc/client/tracking.go` (`IngestRaw`) ya no usa
+`context.Background()` sin deadline: cada intento tiene un timeout explícito
+(`TRACKING_GRPC_REQUEST_TIMEOUT_SECONDS`, default 10s). Ante errores
+transitorios (`Unavailable`, `DeadlineExceeded` — típicos de DNS Docker o
+ingestion-service arrancando) reintenta hasta `TRACKING_GRPC_MAX_ATTEMPTS`
+veces (default 3) con backoff `TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS`→
+`TRACKING_GRPC_RETRY_MAX_BACKOFF_MS` (default 1000ms→4000ms). Errores no
+transitorios (payload inválido, etc.) no se reintentan. Logs a buscar:
+- `tracking gRPC retry` — reintento en curso (incluye attempt/maxAttempts/topic/grpc_state).
+- `tracking event ingested` — publicación exitosa (con o sin retries).
+- `tracking publish failed after retries` — falló tras agotar los intentos.
+
+### LG "Not connected device" (416 / código 1222)
+`internal/adapters/api/lg/client.go` parsea el body de error de la LG API
+(`error.code`/`message`, tolerando forma anidada o plana) y
+`APIError.IsDeviceNotConnected()` clasifica status=416 + code=1222 como una
+condición operativa esperada (dispositivo offline en la app LG), no un
+error crítico. Se loguea una sola vez como `warn` ("device disconnected"
+con deviceID/lgErrorCode/httpStatus), sin repetir el error completo, y no
+interrumpe el polling de los demás dispositivos. Cualquier otro status/código
+sigue tratándose como error real (`stateReadFailed`).
+
+### Status online/offline por gRPC — no implementado (TODO)
+Se evaluó reenviar el cambio de estado (online/offline) como un
+`RawMessage` adicional a `devices/<deviceID>/status` vía el mismo
+`TrackingClient`. **No se implementó**: requeriría asumir cómo
+ingestion-service/Payload Profiles interpretan un topic `status` para un
+dispositivo LG, algo que esta fase no puede verificar sin tocar
+tracking-platform (regla explícita de esta fase). Inventar ese flujo sin
+validarlo del lado de tracking-platform arriesga un payload que se ingiere
+pero no se interpreta. TODO explícito en
+`internal/application/use_case/lg/state_polling.go`
+(`recordDeviceStatus`). El estado queda disponible localmente vía Redis y
+logs mientras tanto (ver siguiente sección).
+
+### Contadores de polling separados
+`refreshDeviceStates` (`internal/application/use_case/lg/state_polling.go`)
+ya no resume todo bajo un único `failed`. Log final `Device states
+refreshed` con:
+```json
+{
+  "devices": 1,
+  "telemetryPublished": 1,
+  "stateReadFailed": 0,
+  "telemetryPublishFailed": 0,
+  "disconnected": 0,
+  "skipped": 0
+}
+```
+Un fallo real de `publishTracking` incrementa `telemetryPublishFailed`; un
+416/1222 incrementa `disconnected` (no `stateReadFailed`); cualquier otro
+error de lectura de estado incrementa `stateReadFailed`.
+
+### Estado operativo en Redis (best-effort)
+`internal/adapters/cache/device_state_store.go` guarda un resumen mínimo en
+`lg:device:<deviceID>:status` (TTL 24h, igual que el resto del estado LG en
+Redis): `{status, lastSeenAt, lastErrorCode, updatedAt}`. Se actualiza a
+`"online"` tras una publicación exitosa y a `"offline"` ante un 416/1222. Es
+puramente diagnóstico: si Redis falla, se loguea `warn` y el flujo de
+polling/telemetry continúa sin interrupción.
+
+### DeviceControlService sigue siendo dev/test
+Sin cambios respecto a LG-1/LG-1A: el gRPC server de comandos LG
+(`internal/adapters/grpc/server/device_control_server.go`) sigue siendo solo
+un mecanismo de desarrollo/pruebas, no conectado a producción. Los comandos
+LG productivos siguen pendientes de la integración por Kafka
+(`device.command.requested` / `device.command.sent` /
+`device.command.publish_failed`).
+
 ## Comandos LG — pendiente
 
 `DeviceControlService` (gRPC local) sigue siendo solo un mecanismo de
@@ -167,8 +255,23 @@ go test ./...
 ```
 
 Cubre: normalización LG (`internal/application/normalizers/lg_normalizer_test.go`
-— forma del topic, ausencia de wrapper, todos los campos del payload) y
-defaults/lectura de configuración (`internal/infrastructure/config/config_test.go`).
+— forma del topic, ausencia de wrapper, todos los campos del payload),
+defaults/lectura de configuración incluyendo los env vars de timeout/retry
+gRPC (`internal/infrastructure/config/config_test.go`), retry/timeout de
+`IngestRaw` con un fake `TrackingServiceClient` (`internal/adapters/grpc/client/tracking_test.go`
+— reintenta ante `Unavailable`, no reintenta errores no transitorios, falla
+tras agotar los intentos), clasificación de errores LG 416/1222
+(`internal/adapters/api/lg/client_test.go`), redacción de credenciales en
+`MONGO_URI` (`internal/adapters/mongo/repository_test.go`) y forma/naming
+del estado en Redis (`internal/adapters/cache/device_state_store_test.go`).
+
+No se agregó un test de integración para `refreshDeviceStates` en sí: está
+fuertemente acoplado a tipos concretos (`*lg.DeviceService`,
+`*parser.LGStateParser`, etc., no interfaces), así que mockearlo
+requeriría un refactor más amplio fuera del alcance de esta fase. En su
+lugar se testean las piezas puras que sí puede aislar
+(`APIError.IsDeviceNotConnected`, `isTransientGRPCError`), que son
+justamente lo que decide el conteo.
 
 ## Validación
 

@@ -2,6 +2,7 @@ package config
 
 import (
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -42,6 +43,14 @@ type Config struct {
 	GRPC struct {
 		Address           string
 		ConnectionTimeout time.Duration
+
+		// Timeout/retry por request de IngestRaw. Pensados para tolerar
+		// que ingestion-service tarde en resolver por DNS Docker o en
+		// estar listo durante el arranque (ver FASE LG-1B).
+		RequestTimeout      time.Duration
+		MaxAttempts         int
+		RetryInitialBackoff time.Duration
+		RetryMaxBackoff     time.Duration
 	}
 
 	DeviceControlGRPC struct {
@@ -110,6 +119,10 @@ func LoadConfig() (*Config, error) {
 
 	cfg.GRPC.Address = getEnv("TRACKING_PLATFORM_GRPC_ADDRESS", "ingestion-service:50051")
 	cfg.GRPC.ConnectionTimeout = 5 * time.Second
+	cfg.GRPC.RequestTimeout = time.Duration(getEnvInt("TRACKING_GRPC_REQUEST_TIMEOUT_SECONDS", 10)) * time.Second
+	cfg.GRPC.MaxAttempts = getEnvInt("TRACKING_GRPC_MAX_ATTEMPTS", 3)
+	cfg.GRPC.RetryInitialBackoff = time.Duration(getEnvInt("TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS", 1000)) * time.Millisecond
+	cfg.GRPC.RetryMaxBackoff = time.Duration(getEnvInt("TRACKING_GRPC_RETRY_MAX_BACKOFF_MS", 4000)) * time.Millisecond
 
 	cfg.DeviceControlGRPC.Address = getEnv("DEVICE_CONTROL_GRPC_ADDRESS", ":50052")
 
@@ -127,4 +140,16 @@ func getEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func getEnvInt(key string, fallback int) int {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	n, err := strconv.Atoi(v)
+	if err != nil {
+		return fallback
+	}
+	return n
 }

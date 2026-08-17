@@ -42,7 +42,7 @@ func main() {
 		zap.String("environment", cfg.App.Environment),
 	)
 
-	mongoClient, err := mongo.NewMongoClient(ctx, cfg)
+	mongoClient, err := mongo.NewMongoClient(ctx, cfg, log)
 	if err != nil {
 		log.Fatal("failed to connect to mongo", zap.Error(err))
 	}
@@ -73,6 +73,10 @@ func main() {
 	grpcCfg := grpcclient.Config{
 		Address:           cfg.GRPC.Address,
 		ConnectionTimeout: cfg.GRPC.ConnectionTimeout,
+		RequestTimeout:    cfg.GRPC.RequestTimeout,
+		MaxAttempts:       cfg.GRPC.MaxAttempts,
+		InitialBackoff:    cfg.GRPC.RetryInitialBackoff,
+		MaxBackoff:        cfg.GRPC.RetryMaxBackoff,
 	}
 
 	grpcTrackingClient, err := grpcclient.New(

@@ -11,9 +11,25 @@ import (
 )
 
 const (
-	deviceStateKeyPrefix = "device:state:"
-	defaultStateTTL      = 24 * time.Hour
+	deviceStateKeyPrefix  = "device:state:"
+	deviceStatusKeyPrefix = "lg:device:"
+	deviceStatusKeySuffix = ":status"
+	defaultStateTTL       = 24 * time.Hour
 )
+
+// DeviceStatus es un resumen operativo mínimo por dispositivo (no
+// reemplaza el snapshot de estado LG completo que ya guarda SetSnapshot).
+// Se usa para diagnóstico rápido (ej. saber si un device está offline sin
+// tener que reconstruirlo desde logs).
+// LastSeenAt no lleva `omitempty`: time.Time es un struct y
+// encoding/json nunca lo trata como "vacío" (gotcha conocido de Go), así
+// que se serializa siempre — su zero-value indica "sin dato".
+type DeviceStatus struct {
+	Status        string    `json:"status"`
+	LastSeenAt    time.Time `json:"lastSeenAt"`
+	LastErrorCode string    `json:"lastErrorCode,omitempty"`
+	UpdatedAt     time.Time `json:"updatedAt"`
+}
 
 type DeviceStateStore struct {
 	client *redis.Client
@@ -29,6 +45,52 @@ func NewDeviceStateStore(client *redis.Client, log *zap.Logger) *DeviceStateStor
 
 func stateKey(deviceID string) string {
 	return deviceStateKeyPrefix + deviceID
+}
+
+func statusKey(deviceID string) string {
+	return deviceStatusKeyPrefix + deviceID + deviceStatusKeySuffix
+}
+
+// SetDeviceStatus guarda un resumen operativo mínimo por dispositivo
+// (lg:device:<deviceID>:status). Es best-effort: un fallo de Redis aquí no
+// debe interrumpir el flujo de polling/telemetry, solo logueá warn.
+func (s *DeviceStateStore) SetDeviceStatus(ctx context.Context, deviceID string, status DeviceStatus) error {
+	status.UpdatedAt = time.Now().UTC()
+
+	data, err := json.Marshal(status)
+	if err != nil {
+		return fmt.Errorf("failed to marshal device status for %s: %w", deviceID, err)
+	}
+
+	if err := s.client.Set(ctx, statusKey(deviceID), data, defaultStateTTL).Err(); err != nil {
+		return fmt.Errorf("failed to set device status for %s: %w", deviceID, err)
+	}
+
+	s.log.Debug("device status stored",
+		zap.String("deviceID", deviceID),
+		zap.String("status", status.Status),
+	)
+
+	return nil
+}
+
+// GetDeviceStatus lee el resumen operativo guardado por SetDeviceStatus.
+func (s *DeviceStateStore) GetDeviceStatus(ctx context.Context, deviceID string) (DeviceStatus, error) {
+	var status DeviceStatus
+
+	data, err := s.client.Get(ctx, statusKey(deviceID)).Bytes()
+	if err != nil {
+		if err == redis.Nil {
+			return status, fmt.Errorf("no status found for device %s", deviceID)
+		}
+		return status, fmt.Errorf("failed to get status for device %s: %w", deviceID, err)
+	}
+
+	if err := json.Unmarshal(data, &status); err != nil {
+		return status, fmt.Errorf("failed to parse stored status for device %s: %w", deviceID, err)
+	}
+
+	return status, nil
 }
 
 // SetSnapshot sobreescribe por completo el estado guardado de un dispositivo.
