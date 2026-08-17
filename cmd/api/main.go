@@ -9,10 +9,6 @@ import (
 	"syscall"
 	"time"
 
-	//"mqtt-api-service/internal/adapters/api"
-	//"mqtt-api-service/internal/adapters/grpc"
-	//"mqtt-api-service/internal/adapters/mongo"
-
 	adaptercache "mqtt-api-service/internal/adapters/cache"
 	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
 	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
@@ -20,11 +16,6 @@ import (
 	"mqtt-api-service/internal/adapters/mqtt"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 	infracache "mqtt-api-service/internal/infrastructure/cache"
-
-	//"mqtt-api-service/internal/adapters/parser"
-	//"mqtt-api-service/internal/application/normalizers"
-
-	//"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/logger"
 
@@ -35,8 +26,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Configuración
-	cfg, err := config.LoadConfig("config/config.yaml")
+	// 1. Configuración (100% variables de entorno, ver .env.example)
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error cargando config: %v\n", err)
 		os.Exit(1)
@@ -56,14 +47,9 @@ func main() {
 		log.Fatal("failed to connect to mongo", zap.Error(err))
 	}
 
-	rawMessageRepo := mongo.NewRawMessageService(mongoClient, "mqtt_api_service", "raw_messages")
+	rawMessageRepo := mongo.NewRawMessageService(mongoClient, cfg.Mongo.DBName, cfg.Mongo.CollectionName)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
-	redisClient, err := infracache.NewRedisClient(ctx, redisAddr, log)
+	redisClient, err := infracache.NewRedisClient(ctx, cfg.Redis.Addr, log)
 	if err != nil {
 		log.Fatal("failed to connect to redis", zap.Error(err))
 	}
@@ -129,8 +115,8 @@ func main() {
 		return nil
 	}
 
-	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID)
-	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID)
+	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.LG.ClientID)
+	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.LG.ClientID)
 
 	if err := client.Subscribe(ctx, pushTopic, lgService.HandlePushMessage); err != nil {
 		log.Error("Error suscribiendo a topic", zap.String("topic", pushTopic), zap.Error(err))
@@ -170,9 +156,6 @@ func main() {
 			)
 		}
 	}()
-
-	//lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
-	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)
 
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)

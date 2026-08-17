@@ -23,40 +23,37 @@ const (
 	EventCodePowerSaveChange
 )
 
-type NormalizedMessage struct {
-	DeviceID   string             `json:"device_id"`
-	ReceivedAt string             `json:"receivedAt"`
-	Topic      string             `json:"topic"`
-	Payload    LGTelemetryPayload `json:"payload"`
+// LGTelemetryEnvelope es el payload JSON directo que se envía a
+// tracking-platform (RawMessage.Payload en el gRPC). No incluye "topic" (va
+// en el campo dedicado del contrato) ni el raw completo de LG (eso se
+// conserva en Mongo, ver internal/adapters/mongo).
+type LGTelemetryEnvelope struct {
+	Vendor      string        `json:"vendor"`
+	Integration string        `json:"integration"`
+	Event       EventCode     `json:"event"`
+	Dt          int64         `json:"dt"`
+	Device      LGDeviceRef   `json:"device"`
+	State       LGStateInfo   `json:"state"`
+	Climate     LGClimateInfo `json:"climate"`
 }
 
-type LGTelemetryPayload struct {
-	EventCode   EventCode          `json:"eventCode"`
-	DeviceType  string             `json:"deviceType"`
-	Power       bool               `json:"power"`
-	Temperature TemperaturePayload `json:"temperature"`
-	Humidity    *float64           `json:"humidity,omitempty"`
-
-	OperationMode string `json:"operationMode,omitempty"`
-	AirFlow       string `json:"airFlow,omitempty"`
-	AirFlowDetail string `json:"airFlowDetail,omitempty"`
-	Oscillation   bool   `json:"oscillation"`
-	PowerSave     bool   `json:"powerSave"`
+type LGDeviceRef struct {
+	ExternalID string `json:"externalId"`
+	Type       string `json:"type"`
 }
 
-type LGPushTelemetry struct {
-	EventCode EventCode `json:"eventCode"`
-
-	DeviceType *string `json:"deviceType,omitempty"`
-
-	Power *bool `json:"power,omitempty"`
-
-	Temperature *TemperaturePayload `json:"temperature,omitempty"`
-
-	Humidity *float64 `json:"humidity,omitempty"`
+type LGStateInfo struct {
+	Power         bool   `json:"power"`
+	Mode          string `json:"mode"`
+	OperationMode string `json:"operationMode"`
 }
 
-type TemperaturePayload struct {
+type LGClimateInfo struct {
+	Temperature LGTemperatureInfo `json:"temperature"`
+	Humidity    *float64          `json:"humidity"`
+}
+
+type LGTemperatureInfo struct {
 	Current float64 `json:"current"`
 	Target  float64 `json:"target"`
 	Unit    string  `json:"unit"`
@@ -70,47 +67,53 @@ func NewLGStateNormalizer(log *zap.Logger) *LGStateNormalizer {
 	return &LGStateNormalizer{log: log}
 }
 
+// NormalizeTelemetry construye el topic (devices/<deviceID>/telemetry) y el
+// payload JSON directo que se enviarán a tracking-platform vía
+// TrackingClient.IngestRaw. LG no expone humedad en AirConditionerState, por
+// lo que climate.humidity siempre viaja en null.
 func (n *LGStateNormalizer) NormalizeTelemetry(
 	deviceID string,
 	deviceType string,
 	eventCode EventCode,
 	state *parser.AirConditionerState,
-) ([]byte, error) {
+) (topic string, payload []byte, receivedAt time.Time, err error) {
 	if state == nil {
-		return nil, fmt.Errorf("cannot normalize nil state for device %s", deviceID)
+		return "", nil, time.Time{}, fmt.Errorf("cannot normalize nil state for device %s", deviceID)
 	}
 
-	payload := LGTelemetryPayload{
-		EventCode:     eventCode,
-		DeviceType:    deviceType,
-		Power:         state.Operation.AirConOperationMode == "POWER_ON",
-		OperationMode: state.AirConJobMode.CurrentJobMode,
-		AirFlow:       state.AirFlow.WindStrength,
-		AirFlowDetail: state.AirFlow.WindStrengthDetail,
-		Oscillation:   state.WindDirection.RotateUpDown,
-		PowerSave:     state.PowerSave.PowerSaveEnabled,
-	}
-	payload.Temperature.Current = state.Temperature.CurrentTemperature
-	payload.Temperature.Target = state.Temperature.TargetTemperature
-	payload.Temperature.Unit = state.Temperature.Unit
+	receivedAt = time.Now().UTC()
 
-	//TODO: Corregir topic
-	msg := NormalizedMessage{
-		DeviceID:   deviceID,
-		ReceivedAt: time.Now().UTC().Format(time.RFC3339),
-		Topic:      fmt.Sprintf("devices/%s/telemetry", deviceID),
-		Payload:    payload,
+	envelope := LGTelemetryEnvelope{
+		Vendor:      "lg",
+		Integration: "lg-thinq",
+		Event:       eventCode,
+		Dt:          receivedAt.Unix(),
+		Device: LGDeviceRef{
+			ExternalID: deviceID,
+			Type:       deviceType,
+		},
+		State: LGStateInfo{
+			Power:         state.Operation.AirConOperationMode == "POWER_ON",
+			Mode:          state.AirConJobMode.CurrentJobMode,
+			OperationMode: state.Operation.AirConOperationMode,
+		},
 	}
+	envelope.Climate.Temperature.Current = state.Temperature.CurrentTemperature
+	envelope.Climate.Temperature.Target = state.Temperature.TargetTemperature
+	envelope.Climate.Temperature.Unit = state.Temperature.Unit
 
-	jsonBytes, err := json.Marshal(msg)
+	jsonBytes, err := json.Marshal(envelope)
 	if err != nil {
-		return nil, fmt.Errorf("error serializing normalized telemetry: %w", err)
+		return "", nil, time.Time{}, fmt.Errorf("error serializing normalized telemetry: %w", err)
 	}
+
+	topic = fmt.Sprintf("devices/%s/telemetry", deviceID)
 
 	n.log.Debug("LG telemetry normalized",
 		zap.String("deviceId", deviceID),
+		zap.String("topic", topic),
 		zap.Int("payload_len", len(jsonBytes)),
 	)
 
-	return jsonBytes, nil
+	return topic, jsonBytes, receivedAt, nil
 }

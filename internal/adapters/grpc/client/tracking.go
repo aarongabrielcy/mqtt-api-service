@@ -2,36 +2,30 @@ package client
 
 import (
 	"context"
-	"encoding/json"
 	"fmt"
 	"time"
 
 	trackingpb "mqtt-api-service/internal/adapters/grpc/proto/tracking"
-	"mqtt-api-service/internal/application/normalizers"
+	"mqtt-api-service/internal/domain/interfaces"
 
 	"go.uber.org/zap"
 )
 
+// IngestRaw envía el mensaje ya normalizado a tracking-platform vía
+// TrackingService.IngestRaw. input.Payload debe ser JSON directo (sin
+// wrapper); el topic viaja en el campo dedicado del contrato, no dentro
+// del payload.
 func (c *Client) IngestRaw(
 	ctx context.Context,
-	payload []byte,
+	input interfaces.IngestRawInput,
 ) error {
 
-	var msg normalizers.NormalizedMessage
-
-	if err := json.Unmarshal(payload, &msg); err != nil {
-		return fmt.Errorf(
-			"failed to unmarshal normalized message: %w",
-			err,
-		)
-	}
-
 	req := &trackingpb.RawMessage{
-		Topic:      msg.Topic,
-		Payload:    payload,
+		Topic:      input.Topic,
+		Payload:    input.Payload,
 		Qos:        -1,
 		Retain:     false,
-		ReceivedAt: msg.ReceivedAt,
+		ReceivedAt: input.ReceivedAt.Format(time.RFC3339),
 	}
 
 	rpcCtx, cancel := context.WithTimeout(
@@ -49,6 +43,7 @@ func (c *Client) IngestRaw(
 		c.log.Error(
 			"failed to ingest tracking event",
 			zap.Error(err),
+			zap.String("topic", input.Topic),
 			zap.String(
 				"grpc_state",
 				c.conn.GetState().String(),
@@ -63,8 +58,7 @@ func (c *Client) IngestRaw(
 
 	c.log.Info(
 		"tracking event ingested",
-		zap.String("device_id", msg.DeviceID),
-		zap.String("topic", msg.Topic),
+		zap.String("topic", input.Topic),
 		zap.Bool("ok", resp.GetOk()),
 	)
 

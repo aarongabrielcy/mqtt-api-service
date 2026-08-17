@@ -1,25 +1,29 @@
+OBSOLETO: árbol de carpetas planeado antes de implementar el proyecto.
+Ya no coincide con la estructura real (no existe config/config.yaml, los
+paths de application/api son distintos). Ver README.md para el estado real.
+
 ```
 mqtt-api-service
-├── cmd/api/main.go                           
+├── cmd/api/main.go
 ├── internal/
 │   ├── adapters/
-│   │   ├── parser/lg_message_parser.go       
-│   │   ├── mqtt/client.go                    
-│   │   ├── grpc/client.go                    
-│   │   ├── mongo/repository.go               
-│   │   └── api/lg_client.go                  
+│   │   ├── parser/lg_message_parser.go
+│   │   ├── mqtt/client.go
+│   │   ├── grpc/client.go
+│   │   ├── mongo/repository.go
+│   │   └── api/lg_client.go
 │   ├── application/
-│   │   ├── normalizers/message_normalizer.go 
-│   │   └── services/lg_service.go            
-│   ├── domain/models.go                      
+│   │   ├── normalizers/message_normalizer.go
+│   │   └── services/lg_service.go
+│   ├── domain/models.go
 │   └── infrastructure/
-│       └── config/config.go                  
+│       └── config/config.go
 ├── config/
-│   └── config.yaml                           
-├── docker-compose.yml                        
-├── Dockerfile                                
-├── go.mod                                    
-├── IMPLEMENTATION_GUIDE.md                   
-├── README.md                                 
-└── .gitignore                                
+│   └── config.yaml
+├── docker-compose.yml
+├── Dockerfile
+├── go.mod
+├── IMPLEMENTATION_GUIDE.md
+├── README.md
+└── .gitignore
 ```

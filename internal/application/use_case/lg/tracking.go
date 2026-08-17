@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"mqtt-api-service/internal/adapters/parser"
 	"mqtt-api-service/internal/application/normalizers"
+	"mqtt-api-service/internal/domain/interfaces"
 
 	"go.uber.org/zap"
 )
@@ -17,7 +18,7 @@ func (s *LGService) publishTracking(
 	state *parser.AirConditionerState,
 ) error {
 
-	normalized, err := s.stateNormalizer.NormalizeTelemetry(
+	topic, payload, receivedAt, err := s.stateNormalizer.NormalizeTelemetry(
 		deviceID,
 		deviceType,
 		eventCode,
@@ -37,7 +38,11 @@ func (s *LGService) publishTracking(
 
 	if err := s.trackingClient.IngestRaw(
 		ctx,
-		normalized,
+		interfaces.IngestRawInput{
+			Topic:      topic,
+			Payload:    payload,
+			ReceivedAt: receivedAt,
+		},
 	); err != nil {
 		return fmt.Errorf(
 			"publish tracking event: %w",
@@ -48,6 +53,7 @@ func (s *LGService) publishTracking(
 	s.log.Info(
 		"tracking event published",
 		zap.String("deviceID", deviceID),
+		zap.String("topic", topic),
 		zap.Int("eventCode", int(eventCode)),
 	)
 

@@ -8,6 +8,17 @@ import (
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 )
 
+// DeviceControlServer expone comandos LG (SetPower, SetTemperature, etc.)
+// como un gRPC server invocado directamente. Esto NO es el flujo final de
+// comandos de la plataforma, solo un mecanismo de desarrollo/pruebas.
+//
+// TODO: la integración final de comandos LG debe consumir Kafka
+// device.command.requested y publicar device.command.sent /
+// device.command.publish_failed, equivalente al patrón implementado en
+// mqtt-adapter-service (internal/adapters/kafka + internal/application
+// command_dispatcher.go de ese repo). No se implementa el Kafka command
+// consumer en esta fase (FASE LG-1 / LG-1A). No conectar este servidor a
+// producción.
 type DeviceControlServer struct {
 	devicecontrolpb.UnimplementedDeviceControlServiceServer
 

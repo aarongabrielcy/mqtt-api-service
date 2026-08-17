@@ -17,7 +17,6 @@
 
 # Dependencies
 vendor/
-go.sum
 
 # Environment
 .env
