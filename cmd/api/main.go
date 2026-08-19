@@ -12,8 +12,10 @@ import (
 	adaptercache "mqtt-api-service/internal/adapters/cache"
 	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
 	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
+	adapterkafka "mqtt-api-service/internal/adapters/kafka"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
+	appcommands "mqtt-api-service/internal/application/commands"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 	infracache "mqtt-api-service/internal/infrastructure/cache"
 	"mqtt-api-service/internal/infrastructure/config"
@@ -108,6 +110,64 @@ func main() {
 		log.Fatal("Error inicializando LGService", zap.Error(err))
 	}
 
+	// Bridge de comandos LG por Kafka (FASE LG-CMD-1/2). Si
+	// LG_COMMANDS_ENABLED=false, ni el consumer ni el sweep de confirmación
+	// arrancan — el servicio se comporta igual que antes de esta fase.
+	var commandConsumer *adapterkafka.CommandConsumer
+	var commandStatusPublisher *adapterkafka.CommandStatusPublisher
+
+	if cfg.LGCommands.Enabled {
+		ackPublisher := appcommands.NewAckPublisher(grpcTrackingClient, log)
+
+		commandStatusPublisher = adapterkafka.NewCommandStatusPublisher(
+			cfg.Kafka.Brokers,
+			cfg.Kafka.CommandSentTopic,
+			cfg.Kafka.CommandPublishFailedTopic,
+			log,
+		)
+
+		confirmationManager := appcommands.NewConfirmationManager(
+			redisClient,
+			ackPublisher,
+			commandStatusPublisher,
+			log,
+			cfg.LGCommands.AckTimeout,
+		)
+		lgService.SetConfirmationManager(confirmationManager)
+
+		dispatcher := appcommands.NewCommandDispatcher(
+			log,
+			lgService,
+			confirmationManager,
+			ackPublisher,
+			commandStatusPublisher,
+			appcommands.ParseConfig{
+				TemperatureMinC: cfg.LGCommands.TemperatureMinC,
+				TemperatureMaxC: cfg.LGCommands.TemperatureMaxC,
+			},
+			cfg.LGCommands.SeenTTL,
+		)
+
+		commandConsumer = adapterkafka.NewCommandConsumer(
+			cfg.Kafka.Brokers,
+			cfg.Kafka.CommandTopic,
+			cfg.Kafka.CommandConsumerGroup,
+			dispatcher,
+			log,
+		)
+
+		go commandConsumer.Run(ctx)
+		confirmationManager.StartSweep(ctx, cfg.LGCommands.AckSweepInterval)
+
+		log.Info("LG command bridge enabled",
+			zap.String("topic", cfg.Kafka.CommandTopic),
+			zap.String("group", cfg.Kafka.CommandConsumerGroup),
+			zap.Strings("brokers", cfg.Kafka.Brokers),
+		)
+	} else {
+		log.Info("LG command bridge disabled (LG_COMMANDS_ENABLED=false)")
+	}
+
 	lgService.StartEventSubscriptionMonitor(ctx, 30*time.Minute)
 	lgService.StartDeviceStateMonitor(ctx, 2*time.Minute)
 
@@ -169,5 +229,17 @@ func main() {
 
 	log.Info("Señal de shutdown recibida")
 	cancel()
+
+	if commandConsumer != nil {
+		if err := commandConsumer.Close(); err != nil {
+			log.Warn("error closing kafka command consumer", zap.Error(err))
+		}
+	}
+	if commandStatusPublisher != nil {
+		if err := commandStatusPublisher.Close(); err != nil {
+			log.Warn("error closing kafka command status publisher", zap.Error(err))
+		}
+	}
+
 	log.Info("mqtt-api-service detenido")
 }

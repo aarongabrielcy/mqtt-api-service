@@ -16,6 +16,9 @@ func newTestState() *parser.AirConditionerState {
 	state.Temperature.CurrentTemperature = 22
 	state.Temperature.TargetTemperature = 24
 	state.Temperature.Unit = "C"
+	state.AirFlow.WindStrength = "HIGH"
+	state.WindDirection.RotateUpDown = true
+	state.PowerSave.PowerSaveEnabled = false
 	return state
 }
 
@@ -94,6 +97,15 @@ func TestNormalizeTelemetry_PayloadShape(t *testing.T) {
 	if state["operationMode"] != "POWER_ON" {
 		t.Errorf("state.operationMode = %v, want POWER_ON", state["operationMode"])
 	}
+	if state["airflow"] != "HIGH" {
+		t.Errorf("state.airflow = %v, want HIGH", state["airflow"])
+	}
+	if state["oscillation"] != true {
+		t.Errorf("state.oscillation = %v, want true", state["oscillation"])
+	}
+	if state["powersave"] != false {
+		t.Errorf("state.powersave = %v, want false", state["powersave"])
+	}
 
 	climate, ok := got["climate"].(map[string]interface{})
 	if !ok {
@@ -114,6 +126,67 @@ func TestNormalizeTelemetry_PayloadShape(t *testing.T) {
 	}
 	if humidity, exists := climate["humidity"]; !exists || humidity != nil {
 		t.Errorf("climate.humidity = %v, want null (LG no expone humedad)", humidity)
+	}
+}
+
+func TestNormalizeTelemetry_IncludesAirflowOscillationPowerSave(t *testing.T) {
+	n := NewLGStateNormalizer(zap.NewNop())
+
+	state := newTestState()
+	state.AirFlow.WindStrength = "MID"
+	state.WindDirection.RotateUpDown = false
+	state.PowerSave.PowerSaveEnabled = true
+
+	_, payload, _, err := n.NormalizeTelemetry("device-123", "DEVICE_AIR_CONDITIONER", EventCodeTracking, state)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("payload no es JSON válido: %v", err)
+	}
+	stateMap := got["state"].(map[string]interface{})
+
+	if stateMap["airflow"] != "MID" {
+		t.Errorf("state.airflow = %v, want MID", stateMap["airflow"])
+	}
+	if stateMap["oscillation"] != false {
+		t.Errorf("state.oscillation = %v, want false", stateMap["oscillation"])
+	}
+	if stateMap["powersave"] != true {
+		t.Errorf("state.powersave = %v, want true", stateMap["powersave"])
+	}
+}
+
+func TestNormalizeTelemetry_MissingAirflowOscillationPowerSaveDefaultToZeroValue(t *testing.T) {
+	n := NewLGStateNormalizer(zap.NewNop())
+
+	// Un state sin AirFlow/WindDirection/PowerSave (nunca reportados por LG
+	// para este dispositivo) no debe inventar valores: deben quedar en su
+	// zero-value, igual que ya ocurre con Power/Mode cuando faltan.
+	state := &parser.AirConditionerState{}
+	state.Operation.AirConOperationMode = "POWER_ON"
+
+	_, payload, _, err := n.NormalizeTelemetry("device-123", "DEVICE_AIR_CONDITIONER", EventCodeTracking, state)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	var got map[string]interface{}
+	if err := json.Unmarshal(payload, &got); err != nil {
+		t.Fatalf("payload no es JSON válido: %v", err)
+	}
+	stateMap := got["state"].(map[string]interface{})
+
+	if stateMap["airflow"] != "" {
+		t.Errorf("state.airflow = %v, want empty string zero-value", stateMap["airflow"])
+	}
+	if stateMap["oscillation"] != false {
+		t.Errorf("state.oscillation = %v, want false zero-value", stateMap["oscillation"])
+	}
+	if stateMap["powersave"] != false {
+		t.Errorf("state.powersave = %v, want false zero-value", stateMap["powersave"])
 	}
 }
 

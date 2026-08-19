@@ -6,6 +6,7 @@ import (
 	"fmt"
 	repository "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/parser"
+	"mqtt-api-service/internal/application/commands"
 	"mqtt-api-service/internal/application/normalizers"
 
 	"go.uber.org/zap"
@@ -22,6 +23,17 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 	mergedState, newState, err := s.mergeDeviceState(ctx, msg.DeviceID, msg.Report)
 	if err != nil {
 		return err
+	}
+
+	if s.confirmationManager != nil {
+		s.confirmationManager.TryConfirm(ctx, msg.DeviceID, commands.CurrentState{
+			Power:             newState.Operation.AirConOperationMode == "POWER_ON",
+			Mode:              newState.AirConJobMode.CurrentJobMode,
+			TemperatureTarget: newState.Temperature.TargetTemperature,
+			Airflow:           newState.AirFlow.WindStrength,
+			Oscillation:       newState.WindDirection.RotateUpDown,
+			PowerSave:         newState.PowerSave.PowerSaveEnabled,
+		})
 	}
 
 	eventCode, shouldEmit, err := classifyPushEvent(msg.Report, previousState, newState, hasPreviousState)

@@ -46,6 +46,9 @@ type LGStateInfo struct {
 	Power         bool   `json:"power"`
 	Mode          string `json:"mode"`
 	OperationMode string `json:"operationMode"`
+	Airflow       string `json:"airflow"`
+	Oscillation   bool   `json:"oscillation"`
+	PowerSave     bool   `json:"powersave"`
 }
 
 type LGClimateInfo struct {
@@ -96,6 +99,9 @@ func (n *LGStateNormalizer) NormalizeTelemetry(
 			Power:         state.Operation.AirConOperationMode == "POWER_ON",
 			Mode:          state.AirConJobMode.CurrentJobMode,
 			OperationMode: state.Operation.AirConOperationMode,
+			Airflow:       state.AirFlow.WindStrength,
+			Oscillation:   state.WindDirection.RotateUpDown,
+			PowerSave:     state.PowerSave.PowerSaveEnabled,
 		},
 	}
 	envelope.Climate.Temperature.Current = state.Temperature.CurrentTemperature

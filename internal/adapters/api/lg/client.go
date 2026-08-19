@@ -37,6 +37,18 @@ type APIError struct {
 const (
 	lgNotConnectedHTTPStatus = 416
 	lgNotConnectedErrorCode  = "1222"
+
+	// lgDeviceTimeoutHTTPStatus / lgDeviceTimeoutErrorCode identifican la
+	// respuesta de la LG API cuando el comando se envió pero LG Cloud no
+	// recibió confirmación del dispositivo a tiempo (status=400,
+	// error.code=2211, message="Device Timeout"). A diferencia de "Not
+	// connected device" (1222), esto NO significa que el dispositivo esté
+	// offline ni que el comando haya fallado: el equipo puede ejecutar el
+	// cambio segundos después. Ver FASE LG-CMD-2D: el dispatcher no marca
+	// failure inmediato para este código, sino que registra la confirmación
+	// pendiente igual que en el camino exitoso.
+	lgDeviceTimeoutHTTPStatus = 400
+	lgDeviceTimeoutErrorCode  = "2211"
 )
 
 // IsDeviceNotConnected identifica la respuesta esperada de la LG API cuando
@@ -44,6 +56,13 @@ const (
 // tratarla como una condición operativa normal en vez de un error crítico.
 func (e *APIError) IsDeviceNotConnected() bool {
 	return e.StatusCode == lgNotConnectedHTTPStatus && e.Code == lgNotConnectedErrorCode
+}
+
+// IsDeviceTimeout identifica el "Device Timeout" ambiguo de la LG API
+// (status=400, error.code=2211): el comando pudo haberse aplicado igual, así
+// que se debe esperar confirmación por estado en vez de fallar de inmediato.
+func (e *APIError) IsDeviceTimeout() bool {
+	return e.StatusCode == lgDeviceTimeoutHTTPStatus && e.Code == lgDeviceTimeoutErrorCode
 }
 
 func NewLGAPIClient(cfg *config.Config, log *zap.Logger) (*LGAPIClient, error) {

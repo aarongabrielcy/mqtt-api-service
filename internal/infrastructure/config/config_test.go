@@ -24,6 +24,17 @@ func clearEcosystemEnv(t *testing.T) {
 		"TRACKING_GRPC_MAX_ATTEMPTS",
 		"TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS",
 		"TRACKING_GRPC_RETRY_MAX_BACKOFF_MS",
+		"KAFKA_BROKERS",
+		"KAFKA_COMMAND_TOPIC",
+		"KAFKA_COMMAND_CONSUMER_GROUP",
+		"KAFKA_COMMAND_SENT_TOPIC",
+		"KAFKA_COMMAND_PUBLISH_FAILED_TOPIC",
+		"LG_COMMANDS_ENABLED",
+		"LG_COMMAND_ACK_TIMEOUT_SECONDS",
+		"LG_COMMAND_ACK_SWEEP_SECONDS",
+		"LG_COMMAND_SEEN_TTL_SECONDS",
+		"LG_COMMAND_TEMPERATURE_MIN_C",
+		"LG_COMMAND_TEMPERATURE_MAX_C",
 	} {
 		t.Setenv(key, "")
 	}
@@ -72,6 +83,153 @@ func TestLoadConfig_DefaultsWhenEnvUnset(t *testing.T) {
 	}
 	if cfg.GRPC.RetryMaxBackoff != 4000*time.Millisecond {
 		t.Errorf("GRPC.RetryMaxBackoff = %v, want 4000ms", cfg.GRPC.RetryMaxBackoff)
+	}
+
+	if len(cfg.Kafka.Brokers) != 1 || cfg.Kafka.Brokers[0] != "kafka:9092" {
+		t.Errorf("Kafka.Brokers = %v, want [kafka:9092]", cfg.Kafka.Brokers)
+	}
+	if cfg.Kafka.CommandTopic != "device.command.requested" {
+		t.Errorf("Kafka.CommandTopic = %q, want device.command.requested", cfg.Kafka.CommandTopic)
+	}
+	if cfg.Kafka.CommandConsumerGroup != "mqtt-api-service-lg-commands" {
+		t.Errorf("Kafka.CommandConsumerGroup = %q, want mqtt-api-service-lg-commands", cfg.Kafka.CommandConsumerGroup)
+	}
+	if cfg.Kafka.CommandSentTopic != "device.command.sent" {
+		t.Errorf("Kafka.CommandSentTopic = %q, want device.command.sent", cfg.Kafka.CommandSentTopic)
+	}
+	if cfg.Kafka.CommandPublishFailedTopic != "device.command.publish_failed" {
+		t.Errorf("Kafka.CommandPublishFailedTopic = %q, want device.command.publish_failed", cfg.Kafka.CommandPublishFailedTopic)
+	}
+
+	if !cfg.LGCommands.Enabled {
+		t.Error("LGCommands.Enabled = false, want true by default")
+	}
+	if cfg.LGCommands.AckTimeout != 60*time.Second {
+		t.Errorf("LGCommands.AckTimeout = %v, want 60s", cfg.LGCommands.AckTimeout)
+	}
+	if cfg.LGCommands.AckSweepInterval != 5*time.Second {
+		t.Errorf("LGCommands.AckSweepInterval = %v, want 5s", cfg.LGCommands.AckSweepInterval)
+	}
+	if cfg.LGCommands.SeenTTL != 600*time.Second {
+		t.Errorf("LGCommands.SeenTTL = %v, want 600s", cfg.LGCommands.SeenTTL)
+	}
+	if cfg.LGCommands.TemperatureMinC != 16 {
+		t.Errorf("LGCommands.TemperatureMinC = %v, want 16", cfg.LGCommands.TemperatureMinC)
+	}
+	if cfg.LGCommands.TemperatureMaxC != 30 {
+		t.Errorf("LGCommands.TemperatureMaxC = %v, want 30", cfg.LGCommands.TemperatureMaxC)
+	}
+}
+
+func TestLoadConfig_KafkaBrokersCommaSeparated(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("KAFKA_BROKERS", "kafka1:9092, kafka2:9092 ,kafka3:9092")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	want := []string{"kafka1:9092", "kafka2:9092", "kafka3:9092"}
+	if len(cfg.Kafka.Brokers) != len(want) {
+		t.Fatalf("Kafka.Brokers = %v, want %v", cfg.Kafka.Brokers, want)
+	}
+	for i, w := range want {
+		if cfg.Kafka.Brokers[i] != w {
+			t.Errorf("Kafka.Brokers[%d] = %q, want %q", i, cfg.Kafka.Brokers[i], w)
+		}
+	}
+}
+
+func TestLoadConfig_LGCommandsEnabled_Unset(t *testing.T) {
+	clearEcosystemEnv(t)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.LGCommands.Enabled {
+		t.Error("LGCommands.Enabled = false, want the explicit default (true) when LG_COMMANDS_ENABLED is unset")
+	}
+}
+
+func TestLoadConfig_LGCommandsEnabled_True(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_COMMANDS_ENABLED", "true")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.LGCommands.Enabled {
+		t.Error("LGCommands.Enabled = false, want true when LG_COMMANDS_ENABLED=true")
+	}
+}
+
+func TestLoadConfig_LGCommandsEnabled_False(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_COMMANDS_ENABLED", "false")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.Enabled {
+		t.Error("LGCommands.Enabled = true, want false when LG_COMMANDS_ENABLED=false")
+	}
+}
+
+func TestLoadConfig_LGCommandsCustomEnv(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_COMMAND_ACK_TIMEOUT_SECONDS", "90")
+	t.Setenv("LG_COMMAND_ACK_SWEEP_SECONDS", "10")
+	t.Setenv("LG_COMMAND_SEEN_TTL_SECONDS", "1200")
+	t.Setenv("LG_COMMAND_TEMPERATURE_MIN_C", "18")
+	t.Setenv("LG_COMMAND_TEMPERATURE_MAX_C", "28")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.AckTimeout != 90*time.Second {
+		t.Errorf("LGCommands.AckTimeout = %v, want 90s", cfg.LGCommands.AckTimeout)
+	}
+	if cfg.LGCommands.AckSweepInterval != 10*time.Second {
+		t.Errorf("LGCommands.AckSweepInterval = %v, want 10s", cfg.LGCommands.AckSweepInterval)
+	}
+	if cfg.LGCommands.SeenTTL != 1200*time.Second {
+		t.Errorf("LGCommands.SeenTTL = %v, want 1200s", cfg.LGCommands.SeenTTL)
+	}
+	if cfg.LGCommands.TemperatureMinC != 18 {
+		t.Errorf("LGCommands.TemperatureMinC = %v, want 18", cfg.LGCommands.TemperatureMinC)
+	}
+	if cfg.LGCommands.TemperatureMaxC != 28 {
+		t.Errorf("LGCommands.TemperatureMaxC = %v, want 28", cfg.LGCommands.TemperatureMaxC)
+	}
+}
+
+// TestLoadConfig_LGCommandsEnabled_InvalidFallsBackToFalse cubre el
+// endurecimiento de FASE LG-CMD-2B: un valor inválido para
+// LG_COMMANDS_ENABLED (typo, valor vacío con espacios, etc.) NUNCA debe
+// activar el bridge de comandos "por accidente" — a diferencia del resto de
+// los env vars numéricos de este archivo (que caen a su default normal ante
+// un valor inválido), acá el fallback ante valor-inválido es
+// deliberadamente más conservador que el default de "no seteado".
+func TestLoadConfig_LGCommandsEnabled_InvalidFallsBackToFalse(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_COMMANDS_ENABLED", "not-a-bool")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.Enabled {
+		t.Error("LGCommands.Enabled = true, want false (safe fallback) for an invalid value")
 	}
 }
 

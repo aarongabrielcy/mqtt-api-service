@@ -6,6 +6,7 @@ import (
 	"mqtt-api-service/internal/adapters/cache"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/parser"
+	"mqtt-api-service/internal/application/commands"
 	"mqtt-api-service/internal/application/normalizers"
 	"mqtt-api-service/internal/domain/interfaces"
 	"mqtt-api-service/internal/infrastructure/config"
@@ -33,6 +34,21 @@ type LGService struct {
 	devices map[string]*ManagedDevice
 
 	trackingClient interfaces.TrackingClient
+
+	// confirmationManager es opcional (nil si LG_COMMANDS_ENABLED=false):
+	// cuando está seteado, cada refresh de estado intenta confirmar por
+	// estado cualquier comando LG pendiente (ver
+	// SetConfirmationManager/state_polling.go).
+	confirmationManager *commands.ConfirmationManager
+}
+
+// SetConfirmationManager inyecta el ConfirmationManager del bridge de
+// comandos LG (ver internal/application/commands). Se hace por setter, no
+// por parámetro del constructor, porque es una dependencia opcional cuya
+// construcción en main.go depende a su vez de trackingClient — ya inyectado
+// aquí — evitando así un ciclo de inicialización.
+func (s *LGService) SetConfirmationManager(cm *commands.ConfirmationManager) {
+	s.confirmationManager = cm
 }
 
 type ManagedDevice struct {

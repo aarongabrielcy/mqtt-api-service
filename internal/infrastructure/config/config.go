@@ -1,8 +1,10 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -77,6 +79,35 @@ type Config struct {
 		ServicePhase string
 		Timeout      string
 	}
+
+	// Kafka es el bridge de comandos oficial de la plataforma
+	// (device.command.requested / device.command.sent /
+	// device.command.publish_failed). No se usa para telemetría (eso sigue
+	// yendo por gRPC IngestRaw).
+	Kafka struct {
+		Brokers                   []string
+		CommandTopic              string
+		CommandConsumerGroup      string
+		CommandSentTopic          string
+		CommandPublishFailedTopic string
+	}
+
+	// LGCommands controla el bridge de comandos LG por Kafka (ver
+	// internal/application/commands). Si Enabled es false, el consumer de
+	// Kafka no arranca y el servicio se comporta igual que antes de esta
+	// fase (solo telemetría). Enabled se resuelve vía getEnvBoolStrict con
+	// dos defaults distintos: LG_COMMANDS_ENABLED sin definir usa el
+	// default explícito (true, documentado en .env.example), pero un valor
+	// definido y no parseable ("maybe", etc.) nunca activa el bridge por
+	// accidente — cae a false con un warning en stderr, no al default.
+	LGCommands struct {
+		Enabled          bool
+		AckTimeout       time.Duration
+		AckSweepInterval time.Duration
+		SeenTTL          time.Duration
+		TemperatureMinC  float64
+		TemperatureMaxC  float64
+	}
 }
 
 // LoadConfig carga la configuración únicamente desde variables de entorno.
@@ -132,6 +163,19 @@ func LoadConfig() (*Config, error) {
 
 	cfg.Redis.Addr = getEnv("REDIS_ADDR", "redis:6379")
 
+	cfg.Kafka.Brokers = splitCSV(getEnv("KAFKA_BROKERS", "kafka:9092"))
+	cfg.Kafka.CommandTopic = getEnv("KAFKA_COMMAND_TOPIC", "device.command.requested")
+	cfg.Kafka.CommandConsumerGroup = getEnv("KAFKA_COMMAND_CONSUMER_GROUP", "mqtt-api-service-lg-commands")
+	cfg.Kafka.CommandSentTopic = getEnv("KAFKA_COMMAND_SENT_TOPIC", "device.command.sent")
+	cfg.Kafka.CommandPublishFailedTopic = getEnv("KAFKA_COMMAND_PUBLISH_FAILED_TOPIC", "device.command.publish_failed")
+
+	cfg.LGCommands.Enabled = getEnvBoolStrict("LG_COMMANDS_ENABLED", true, false)
+	cfg.LGCommands.AckTimeout = time.Duration(getEnvInt("LG_COMMAND_ACK_TIMEOUT_SECONDS", 60)) * time.Second
+	cfg.LGCommands.AckSweepInterval = time.Duration(getEnvInt("LG_COMMAND_ACK_SWEEP_SECONDS", 5)) * time.Second
+	cfg.LGCommands.SeenTTL = time.Duration(getEnvInt("LG_COMMAND_SEEN_TTL_SECONDS", 600)) * time.Second
+	cfg.LGCommands.TemperatureMinC = getEnvFloat("LG_COMMAND_TEMPERATURE_MIN_C", 16)
+	cfg.LGCommands.TemperatureMaxC = getEnvFloat("LG_COMMAND_TEMPERATURE_MAX_C", 30)
+
 	return cfg, nil
 }
 
@@ -152,4 +196,53 @@ func getEnvInt(key string, fallback int) int {
 		return fallback
 	}
 	return n
+}
+
+// getEnvBoolStrict resuelve un booleano con dos defaults distintos: uno
+// para cuando la variable no está definida (defaultUnset), y otro más
+// conservador para cuando SÍ está definida pero con un valor no parseable
+// (fallbackInvalid). Esto evita que un typo en el env var (ej.
+// LG_COMMANDS_ENABLED=tru) active silenciosamente un comportamiento que
+// requiere defaultUnset=true — un valor inválido siempre cae a
+// fallbackInvalid, nunca a defaultUnset, y se reporta a stderr para que no
+// pase desapercibido en logs de arranque (todavía no existe un logger
+// zap en este punto de LoadConfig).
+func getEnvBoolStrict(key string, defaultUnset bool, fallbackInvalid bool) bool {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultUnset
+	}
+	b, err := strconv.ParseBool(v)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "warning: invalid value %q for %s, falling back to %v\n", v, key, fallbackInvalid)
+		return fallbackInvalid
+	}
+	return b
+}
+
+func getEnvFloat(key string, fallback float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return fallback
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil {
+		return fallback
+	}
+	return f
+}
+
+// splitCSV soporta KAFKA_BROKERS como lista separada por coma
+// ("kafka:9092,kafka2:9092"), recortando espacios y descartando entradas
+// vacías.
+func splitCSV(v string) []string {
+	parts := strings.Split(v, ",")
+	out := make([]string, 0, len(parts))
+	for _, p := range parts {
+		p = strings.TrimSpace(p)
+		if p != "" {
+			out = append(out, p)
+		}
+	}
+	return out
 }

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	repository "mqtt-api-service/internal/adapters/mongo"
+	"mqtt-api-service/internal/application/commands"
 	"mqtt-api-service/internal/application/normalizers"
 	"time"
 
@@ -98,6 +99,17 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 		}
 
 		device.LastState = state
+
+		if s.confirmationManager != nil {
+			s.confirmationManager.TryConfirm(ctx, deviceID, commands.CurrentState{
+				Power:             state.Operation.AirConOperationMode == "POWER_ON",
+				Mode:              state.AirConJobMode.CurrentJobMode,
+				TemperatureTarget: state.Temperature.TargetTemperature,
+				Airflow:           state.AirFlow.WindStrength,
+				Oscillation:       state.WindDirection.RotateUpDown,
+				PowerSave:         state.PowerSave.PowerSaveEnabled,
+			})
+		}
 
 		var p map[string]any
 		json.Unmarshal(raw, &p)
