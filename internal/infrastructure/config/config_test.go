@@ -14,7 +14,6 @@ func clearEcosystemEnv(t *testing.T) {
 		"MONGO_COLLECTION_NAME",
 		"MONGO_URI",
 		"TRACKING_PLATFORM_GRPC_ADDRESS",
-		"DEVICE_CONTROL_GRPC_ADDRESS",
 		"APP_ENV",
 		"LOG_LEVEL",
 		"COUNTRY_CODE",
@@ -35,6 +34,10 @@ func clearEcosystemEnv(t *testing.T) {
 		"LG_COMMAND_SEEN_TTL_SECONDS",
 		"LG_COMMAND_TEMPERATURE_MIN_C",
 		"LG_COMMAND_TEMPERATURE_MAX_C",
+		"LG_DEBUG_STATE_LOGS",
+		"LG_STATE_POLL_INTERVAL_SECONDS",
+		"LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS",
+		"LG_COMMAND_POST_REFRESH_DELAY_MS",
 	} {
 		t.Setenv(key, "")
 	}
@@ -58,7 +61,6 @@ func TestLoadConfig_DefaultsWhenEnvUnset(t *testing.T) {
 		{"Mongo.CollectionName", cfg.Mongo.CollectionName, "raw_lg_messages"},
 		{"Mongo.URI", cfg.Mongo.URI, "mongodb://mongo:27017"},
 		{"GRPC.Address", cfg.GRPC.Address, "ingestion-service:50051"},
-		{"DeviceControlGRPC.Address", cfg.DeviceControlGRPC.Address, ":50052"},
 		{"App.Environment", cfg.App.Environment, "local"},
 		{"App.LogLevel", cfg.App.LogLevel, "info"},
 		{"LGApi.CountryCode", cfg.LGApi.CountryCode, "MX"},
@@ -104,8 +106,11 @@ func TestLoadConfig_DefaultsWhenEnvUnset(t *testing.T) {
 	if !cfg.LGCommands.Enabled {
 		t.Error("LGCommands.Enabled = false, want true by default")
 	}
-	if cfg.LGCommands.AckTimeout != 60*time.Second {
-		t.Errorf("LGCommands.AckTimeout = %v, want 60s", cfg.LGCommands.AckTimeout)
+	// FASE LG-CMD-2H: default subido de 60s a 90s, para dar margen frente a
+	// LG.StatePollInterval (default 30s) — antes quedaba casi exactamente
+	// al filo de un solo ciclo de polling.
+	if cfg.LGCommands.AckTimeout != 90*time.Second {
+		t.Errorf("LGCommands.AckTimeout = %v, want 90s", cfg.LGCommands.AckTimeout)
 	}
 	if cfg.LGCommands.AckSweepInterval != 5*time.Second {
 		t.Errorf("LGCommands.AckSweepInterval = %v, want 5s", cfg.LGCommands.AckSweepInterval)
@@ -118,6 +123,65 @@ func TestLoadConfig_DefaultsWhenEnvUnset(t *testing.T) {
 	}
 	if cfg.LGCommands.TemperatureMaxC != 30 {
 		t.Errorf("LGCommands.TemperatureMaxC = %v, want 30", cfg.LGCommands.TemperatureMaxC)
+	}
+	if cfg.LGCommands.DebugStateLogs {
+		t.Error("LGCommands.DebugStateLogs = true, want false by default")
+	}
+
+	// FASE LG-CMD-2H: polling normal de estado configurable (default 30s,
+	// antes hardcodeado a 2 minutos en cmd/api/main.go), renovación de
+	// suscripción configurable (default 30 minutos, mismo valor que antes
+	// hardcodeado), y delay del refresh post-comando (default 1000ms).
+	if cfg.LG.StatePollInterval != 30*time.Second {
+		t.Errorf("LG.StatePollInterval = %v, want 30s", cfg.LG.StatePollInterval)
+	}
+	if cfg.LG.EventSubscriptionMonitorInterval != 30*time.Minute {
+		t.Errorf("LG.EventSubscriptionMonitorInterval = %v, want 30m", cfg.LG.EventSubscriptionMonitorInterval)
+	}
+	if cfg.LGCommands.PostRefreshDelay != 1000*time.Millisecond {
+		t.Errorf("LGCommands.PostRefreshDelay = %v, want 1000ms", cfg.LGCommands.PostRefreshDelay)
+	}
+}
+
+func TestLoadConfig_LGStatePollInterval_CustomEnv(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_STATE_POLL_INTERVAL_SECONDS", "45")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LG.StatePollInterval != 45*time.Second {
+		t.Errorf("LG.StatePollInterval = %v, want 45s", cfg.LG.StatePollInterval)
+	}
+}
+
+func TestLoadConfig_LGEventSubscriptionMonitorInterval_CustomEnv(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", "900")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LG.EventSubscriptionMonitorInterval != 900*time.Second {
+		t.Errorf("LG.EventSubscriptionMonitorInterval = %v, want 900s", cfg.LG.EventSubscriptionMonitorInterval)
+	}
+}
+
+func TestLoadConfig_LGCommandPostRefreshDelay_CustomEnv(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_COMMAND_POST_REFRESH_DELAY_MS", "2500")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.PostRefreshDelay != 2500*time.Millisecond {
+		t.Errorf("LGCommands.PostRefreshDelay = %v, want 2500ms", cfg.LGCommands.PostRefreshDelay)
 	}
 }
 
@@ -233,6 +297,65 @@ func TestLoadConfig_LGCommandsEnabled_InvalidFallsBackToFalse(t *testing.T) {
 	}
 }
 
+// TestLoadConfig_LGDebugStateLogs_* cubre FASE LG-CMD-2E: a diferencia de
+// LGCommands.Enabled, LG_DEBUG_STATE_LOGS no tiene ningún comportamiento
+// "seguro por defecto" que justifique defaults distintos entre unset e
+// inválido — ambos casos deben caer a false.
+func TestLoadConfig_LGDebugStateLogs_DefaultFalseWhenUnset(t *testing.T) {
+	clearEcosystemEnv(t)
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.DebugStateLogs {
+		t.Error("LGCommands.DebugStateLogs = true, want false when LG_DEBUG_STATE_LOGS is unset")
+	}
+}
+
+func TestLoadConfig_LGDebugStateLogs_True(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_DEBUG_STATE_LOGS", "true")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if !cfg.LGCommands.DebugStateLogs {
+		t.Error("LGCommands.DebugStateLogs = false, want true when LG_DEBUG_STATE_LOGS=true")
+	}
+}
+
+func TestLoadConfig_LGDebugStateLogs_False(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_DEBUG_STATE_LOGS", "false")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.DebugStateLogs {
+		t.Error("LGCommands.DebugStateLogs = true, want false when LG_DEBUG_STATE_LOGS=false")
+	}
+}
+
+func TestLoadConfig_LGDebugStateLogs_InvalidFallsBackToFalse(t *testing.T) {
+	clearEcosystemEnv(t)
+	t.Setenv("LG_DEBUG_STATE_LOGS", "not-a-bool")
+
+	cfg, err := LoadConfig()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.LGCommands.DebugStateLogs {
+		t.Error("LGCommands.DebugStateLogs = true, want false (safe default) for an invalid value")
+	}
+}
+
 func TestLoadConfig_ReadsFromEnv(t *testing.T) {
 	clearEcosystemEnv(t)
 
@@ -240,7 +363,6 @@ func TestLoadConfig_ReadsFromEnv(t *testing.T) {
 	t.Setenv("MONGO_DB_NAME", "custom-db")
 	t.Setenv("MONGO_COLLECTION_NAME", "custom-collection")
 	t.Setenv("TRACKING_PLATFORM_GRPC_ADDRESS", "custom-ingestion:9999")
-	t.Setenv("DEVICE_CONTROL_GRPC_ADDRESS", ":9090")
 	t.Setenv("LG_CLIENT_ID", "test-lg-client-id")
 	t.Setenv("LG_MQTT_CLIENT_ID", "test-mqtt-client-id")
 	t.Setenv("LG_API_CLIENT_ID", "test-api-client-id")
@@ -265,9 +387,6 @@ func TestLoadConfig_ReadsFromEnv(t *testing.T) {
 	}
 	if cfg.GRPC.Address != "custom-ingestion:9999" {
 		t.Errorf("GRPC.Address = %q, want custom-ingestion:9999", cfg.GRPC.Address)
-	}
-	if cfg.DeviceControlGRPC.Address != ":9090" {
-		t.Errorf("DeviceControlGRPC.Address = %q, want :9090", cfg.DeviceControlGRPC.Address)
 	}
 
 	// LG_CLIENT_ID, LG_MQTT_CLIENT_ID y LG_API_CLIENT_ID son tres

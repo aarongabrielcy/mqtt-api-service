@@ -38,6 +38,16 @@ const (
 	// log estructurado de dispatcher.go cuando LG responde 2211 y el comando
 	// queda a la espera de confirmación por estado.
 	DetailDeviceTimeoutPendingConfirmation = "device_timeout_pending_confirmation"
+
+	// AckDetailPreconditionFailedPowerOff (FASE LG-CMD-2I) se usa cuando un
+	// comando LG se rechaza antes de llamar a la LG API porque requiere el
+	// A/C encendido y el último estado conocido indica power=false.
+	// Evidencia real: LG no aplica (o no reporta) windDirection.rotateUpDown
+	// mientras airConOperationMode=POWER_OFF, así que enviar
+	// lg.oscillation=true en ese estado nunca confirma y termina en
+	// ack_timeout — se trata como precondición de comando, no como fallo de
+	// parser/polling.
+	AckDetailPreconditionFailedPowerOff = "precondition_failed_power_off"
 )
 
 // SyntheticAck tiene la misma forma que DeviceCommandAck (el contrato a

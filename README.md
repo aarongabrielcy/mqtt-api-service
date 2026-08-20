@@ -95,11 +95,6 @@ configuración — no hay `/app/config` en la imagen.
 ### No implementado / fuera de esta fase
 - Samsung, Daewoo, Alexa.
 - Device Model Sensor Codes Catalog.
-- Flujo final de comandos LG vía Kafka (`device.command.requested` /
-  `device.command.sent` / `device.command.publish_failed`) — el
-  `DeviceControlService` gRPC actual es solo un mecanismo dev/test, ver TODO
-  en `internal/adapters/grpc/server/device_control_server.go`. No conectar
-  ese servidor a producción.
 - Health/readiness HTTP endpoint — no hay servidor HTTP en el proceso.
   `EXPOSE 8080` en el Dockerfile es solo un puerto reservado, comentado como
   no implementado.
@@ -218,21 +213,21 @@ Redis): `{status, lastSeenAt, lastErrorCode, updatedAt}`. Se actualiza a
 puramente diagnóstico: si Redis falla, se loguea `warn` y el flujo de
 polling/telemetry continúa sin interrupción.
 
-### DeviceControlService sigue siendo dev/test
-Sin cambios respecto a LG-1/LG-1A: el gRPC server de comandos LG
-(`internal/adapters/grpc/server/device_control_server.go`) sigue siendo solo
-un mecanismo de desarrollo/pruebas, no conectado a producción. Los comandos
-LG productivos siguen pendientes de la integración por Kafka
-(`device.command.requested` / `device.command.sent` /
-`device.command.publish_failed`).
+### Comandos LG — canal único: Kafka (FASE LG-CMD-1/2, endurecido en 2D/2E/2G)
+El `DeviceControlService` gRPC dev/test descrito en fases anteriores de este
+README fue eliminado (FASE LG-CMD-2G): ya no existe ningún servidor gRPC en
+este proceso. Los comandos LG entran únicamente por Kafka
+(`device.command.requested`, consumidos por
+`internal/adapters/kafka/command_consumer.go` +
+`internal/application/commands/dispatcher.go`), que ejecuta el comando
+contra la LG API y publica `device.command.sent` /
+`device.command.publish_failed`. La confirmación final llega por estado
+(polling/push) vía un ACK sintético publicado por gRPC `IngestRaw` hacia
+`ingestion-service` — ver `internal/application/commands/confirmation_manager.go`.
 
-## Comandos LG — pendiente
-
-`DeviceControlService` (gRPC local) sigue siendo solo un mecanismo de
-desarrollo/pruebas. La integración final de comandos LG debe consumir Kafka
-`device.command.requested` y publicar `device.command.sent` /
-`device.command.publish_failed`, igual que `mqtt-adapter-service`. No
-implementado en esta fase.
+gRPC en este servicio es hoy **exclusivamente cliente**: `TrackingService.
+IngestRaw` (`internal/adapters/grpc/client/tracking.go`) para telemetría y
+ACKs sintéticos. No hay ningún gRPC server expuesto por mqtt-api-service.
 
 ## Requisitos
 

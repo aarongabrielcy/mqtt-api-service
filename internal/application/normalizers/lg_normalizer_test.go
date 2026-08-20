@@ -23,7 +23,7 @@ func newTestState() *parser.AirConditionerState {
 }
 
 func TestNormalizeTelemetry_Topic(t *testing.T) {
-	n := NewLGStateNormalizer(zap.NewNop())
+	n := NewLGStateNormalizer(zap.NewNop(), false)
 
 	topic, _, _, err := n.NormalizeTelemetry("device-123", "DEVICE_AIR_CONDITIONER", EventCodeTracking, newTestState())
 	if err != nil {
@@ -37,7 +37,7 @@ func TestNormalizeTelemetry_Topic(t *testing.T) {
 }
 
 func TestNormalizeTelemetry_PayloadShape(t *testing.T) {
-	n := NewLGStateNormalizer(zap.NewNop())
+	n := NewLGStateNormalizer(zap.NewNop(), false)
 
 	_, payload, receivedAt, err := n.NormalizeTelemetry("device-123", "DEVICE_AIR_CONDITIONER", EventCodeTracking, newTestState())
 	if err != nil {
@@ -130,7 +130,7 @@ func TestNormalizeTelemetry_PayloadShape(t *testing.T) {
 }
 
 func TestNormalizeTelemetry_IncludesAirflowOscillationPowerSave(t *testing.T) {
-	n := NewLGStateNormalizer(zap.NewNop())
+	n := NewLGStateNormalizer(zap.NewNop(), false)
 
 	state := newTestState()
 	state.AirFlow.WindStrength = "MID"
@@ -160,7 +160,7 @@ func TestNormalizeTelemetry_IncludesAirflowOscillationPowerSave(t *testing.T) {
 }
 
 func TestNormalizeTelemetry_MissingAirflowOscillationPowerSaveDefaultToZeroValue(t *testing.T) {
-	n := NewLGStateNormalizer(zap.NewNop())
+	n := NewLGStateNormalizer(zap.NewNop(), false)
 
 	// Un state sin AirFlow/WindDirection/PowerSave (nunca reportados por LG
 	// para este dispositivo) no debe inventar valores: deben quedar en su
@@ -191,7 +191,7 @@ func TestNormalizeTelemetry_MissingAirflowOscillationPowerSaveDefaultToZeroValue
 }
 
 func TestNormalizeTelemetry_NilStateReturnsError(t *testing.T) {
-	n := NewLGStateNormalizer(zap.NewNop())
+	n := NewLGStateNormalizer(zap.NewNop(), false)
 
 	if _, _, _, err := n.NormalizeTelemetry("device-123", "DEVICE_AIR_CONDITIONER", EventCodeTracking, nil); err == nil {
 		t.Error("se esperaba un error para state nil, se obtuvo nil")

@@ -59,15 +59,22 @@ type ConfirmationManager struct {
 	statusPublisher StatusPublisher
 	log             *zap.Logger
 	ackTimeout      time.Duration
+
+	// debugStateLogs habilita el log "LG command confirmation check" en
+	// TryConfirm (FASE LG-CMD-2E) — expected vs actual por comando
+	// pendiente, solo cuando SÍ hay una pendiente (para no generar ruido en
+	// cada poll/push sin comandos en curso).
+	debugStateLogs bool
 }
 
-func NewConfirmationManager(redisClient *redis.Client, ackPublisher *AckPublisher, statusPublisher StatusPublisher, log *zap.Logger, ackTimeout time.Duration) *ConfirmationManager {
+func NewConfirmationManager(redisClient *redis.Client, ackPublisher *AckPublisher, statusPublisher StatusPublisher, log *zap.Logger, ackTimeout time.Duration, debugStateLogs bool) *ConfirmationManager {
 	return &ConfirmationManager{
 		redis:           redisClient,
 		ackPublisher:    ackPublisher,
 		statusPublisher: statusPublisher,
 		log:             log,
 		ackTimeout:      ackTimeout,
+		debugStateLogs:  debugStateLogs,
 	}
 }
 
@@ -140,6 +147,22 @@ func (m *ConfirmationManager) getPending(ctx context.Context, imei string) (*Pen
 	return &pending, nil
 }
 
+// DeleteIfPending elimina la pendiente de imei solo si todavía pertenece a
+// commandID (FASE LG-CMD-2G) — usado cuando el dispatcher registró la
+// pendiente de forma optimista antes de ejecutar el comando LG (para no
+// perder una confirmación que llegue como efecto del propio comando) y el
+// comando termina fallando con un error definitivo: la pendiente ya no
+// aplica y se elimina para no dejarla huérfana esperando una confirmación
+// que nunca llegará. El chequeo de CommandID evita borrar una pendiente
+// distinta que pudiera haber superseded a esta mientras tanto.
+func (m *ConfirmationManager) DeleteIfPending(ctx context.Context, imei, commandID string) {
+	pending, err := m.getPending(ctx, imei)
+	if err != nil || pending == nil || pending.CommandID != commandID {
+		return
+	}
+	m.deletePending(ctx, imei)
+}
+
 func (m *ConfirmationManager) deletePending(ctx context.Context, imei string) {
 	if err := m.redis.Del(ctx, pendingKey(imei)).Err(); err != nil {
 		m.log.Warn("failed to delete pending confirmation", zap.String("imei", imei), zap.Error(err))
@@ -163,7 +186,10 @@ func (m *ConfirmationManager) TryConfirm(ctx context.Context, imei string, curre
 		return
 	}
 
-	if !matchesExpected(pending.Expected, current) {
+	matched := matchesExpected(pending.Expected, current)
+	m.logConfirmationCheckIfEnabled(*pending, current, matched)
+
+	if !matched {
 		return
 	}
 
@@ -185,6 +211,27 @@ func (m *ConfirmationManager) TryConfirm(ctx context.Context, imei string, curre
 	}
 
 	m.deletePending(ctx, imei)
+}
+
+// logConfirmationCheckIfEnabled loguea expected vs actual para una
+// confirmación pendiente (FASE LG-CMD-2E), solo si LG_DEBUG_STATE_LOGS=true
+// — y solo cuando hay una pendiente real para evitar ruido en cada
+// poll/push sin comandos en curso (el caso pending==nil ya corta antes de
+// llegar aquí). No decide nada: matched ya viene calculado por el llamador,
+// para no evaluar matchesExpected dos veces.
+func (m *ConfirmationManager) logConfirmationCheckIfEnabled(pending PendingConfirmation, current CurrentState, matched bool) {
+	if !m.debugStateLogs {
+		return
+	}
+
+	m.log.Debug("LG command confirmation check",
+		zap.String("commandId", pending.CommandID),
+		zap.String("imei", pending.IMEI),
+		zap.String("commandKey", pending.CommandKey),
+		zap.Any("expected", map[string]any{"path": pending.Expected.Path, "value": pending.Expected.Value}),
+		zap.Any("actual", extractActualByPath(pending.Expected.Path, current)),
+		zap.Bool("matched", matched),
+	)
 }
 
 // SweepTimeouts recorre lg:command:pending:* y publica un ACK sintético

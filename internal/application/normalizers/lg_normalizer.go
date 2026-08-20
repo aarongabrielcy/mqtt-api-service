@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"mqtt-api-service/internal/adapters/parser"
+	"mqtt-api-service/internal/infrastructure/debuglog"
 	"time"
 
 	"go.uber.org/zap"
@@ -64,10 +65,15 @@ type LGTemperatureInfo struct {
 
 type LGStateNormalizer struct {
 	log *zap.Logger
+
+	// debugStateLogs habilita el log "LG normalized telemetry payload"
+	// (FASE LG-CMD-2E) — el payload JSON completo que se manda por gRPC,
+	// para poder confirmar si trae state.oscillation/airflow/powersave.
+	debugStateLogs bool
 }
 
-func NewLGStateNormalizer(log *zap.Logger) *LGStateNormalizer {
-	return &LGStateNormalizer{log: log}
+func NewLGStateNormalizer(log *zap.Logger, debugStateLogs bool) *LGStateNormalizer {
+	return &LGStateNormalizer{log: log, debugStateLogs: debugStateLogs}
 }
 
 // NormalizeTelemetry construye el topic (devices/<deviceID>/telemetry) y el
@@ -120,6 +126,17 @@ func (n *LGStateNormalizer) NormalizeTelemetry(
 		zap.String("topic", topic),
 		zap.Int("payload_len", len(jsonBytes)),
 	)
+
+	if n.debugStateLogs {
+		truncatedPayload, wasTruncated := debuglog.Truncate(jsonBytes, debuglog.DefaultMaxBodyLogLength)
+		n.log.Debug("LG normalized telemetry payload",
+			zap.String("deviceID", deviceID),
+			zap.String("topic", topic),
+			zap.Bool("payloadTruncated", wasTruncated),
+			zap.Int("payloadLength", len(jsonBytes)),
+			zap.ByteString("payload", truncatedPayload),
+		)
+	}
 
 	return topic, jsonBytes, receivedAt, nil
 }

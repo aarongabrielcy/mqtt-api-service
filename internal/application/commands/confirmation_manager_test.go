@@ -72,7 +72,20 @@ func newTestConfirmationManagerWithStatus(t *testing.T) (*ConfirmationManager, *
 	tracking := &fakeTrackingClient{}
 	status := &fakeStatusPublisher{}
 	ackPublisher := NewAckPublisher(tracking, zap.NewNop())
-	cm := NewConfirmationManager(newTestRedis(t), ackPublisher, status, zap.NewNop(), 60*time.Second)
+	cm := NewConfirmationManager(newTestRedis(t), ackPublisher, status, zap.NewNop(), 60*time.Second, false)
+	return cm, tracking, status
+}
+
+// newTestConfirmationManagerWithDebugLogs es igual a
+// newTestConfirmationManagerWithStatus pero con debugStateLogs=true (FASE
+// LG-CMD-2E) — usado por los tests que verifican que activar el flag de
+// diagnóstico no cambia ningún comportamiento funcional (solo agrega logs).
+func newTestConfirmationManagerWithDebugLogs(t *testing.T) (*ConfirmationManager, *fakeTrackingClient, *fakeStatusPublisher) {
+	t.Helper()
+	tracking := &fakeTrackingClient{}
+	status := &fakeStatusPublisher{}
+	ackPublisher := NewAckPublisher(tracking, zap.NewNop())
+	cm := NewConfirmationManager(newTestRedis(t), ackPublisher, status, zap.NewNop(), 60*time.Second, true)
 	return cm, tracking, status
 }
 
@@ -322,6 +335,76 @@ func TestConfirmationManager_SweepTimeouts_NormalReason_DoesNotPublishFailed(t *
 	_, failed := status.counts()
 	if failed != 0 {
 		t.Errorf("a normal (non-device-timeout) pending timeout should not publish device.command.publish_failed, got %d", failed)
+	}
+}
+
+// TestConfirmationManager_DebugStateLogs_DoesNotChangeBehavior cubre FASE
+// LG-CMD-2E: LG_DEBUG_STATE_LOGS solo debe agregar visibilidad (logs), nunca
+// alterar qué ACK se publica o cuándo. Se ejercitan TryConfirm (match y
+// no-match) y SweepTimeouts con debugStateLogs=true y se verifica que el
+// comportamiento observable es idéntico al de los tests equivalentes con el
+// flag en false.
+func TestConfirmationManager_DebugStateLogs_TryConfirmMatch_SameBehaviorAsWithoutDebug(t *testing.T) {
+	cm, tracking, _ := newTestConfirmationManagerWithDebugLogs(t)
+	ctx := context.Background()
+
+	if err := cm.SavePending(ctx, PendingConfirmation{
+		CommandID: "cmd_debug_1", IMEI: "imei-debug-1", CommandKey: CommandKeyOscillation,
+		Expected:  ExpectedState{Path: "state.oscillation", Value: true},
+		ExpiresAt: time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("SavePending failed: %v", err)
+	}
+
+	cm.TryConfirm(ctx, "imei-debug-1", CurrentState{Oscillation: true})
+
+	ack := tracking.lastAck(t)
+	if !ack.OK || ack.CommandID != "cmd_debug_1" || ack.Detail != AckDetailConfirmedByState {
+		t.Fatalf("unexpected ack with debugStateLogs=true: %+v", ack)
+	}
+	if p, err := cm.getPending(ctx, "imei-debug-1"); err != nil || p != nil {
+		t.Error("pending confirmation should still be deleted after confirming, even with debugStateLogs=true")
+	}
+}
+
+func TestConfirmationManager_DebugStateLogs_TryConfirmNoMatch_DoesNotPublishOrPanic(t *testing.T) {
+	cm, tracking, _ := newTestConfirmationManagerWithDebugLogs(t)
+	ctx := context.Background()
+
+	if err := cm.SavePending(ctx, PendingConfirmation{
+		CommandID: "cmd_debug_2", IMEI: "imei-debug-2", CommandKey: CommandKeyOscillation,
+		Expected:  ExpectedState{Path: "state.oscillation", Value: true},
+		ExpiresAt: time.Now().UTC().Add(time.Minute),
+	}); err != nil {
+		t.Fatalf("SavePending failed: %v", err)
+	}
+
+	// Reproduce el caso reportado (FASE LG-CMD-2E): expected oscillation
+	// true, actual reporta false — no debe publicar nada, con o sin debug.
+	cm.TryConfirm(ctx, "imei-debug-2", CurrentState{Oscillation: false})
+
+	if tracking.callCount() != 0 {
+		t.Errorf("no ack should be published while state does not match, got %d calls", tracking.callCount())
+	}
+}
+
+func TestConfirmationManager_DebugStateLogs_SweepTimeouts_SameBehaviorAsWithoutDebug(t *testing.T) {
+	cm, tracking, _ := newTestConfirmationManagerWithDebugLogs(t)
+	ctx := context.Background()
+
+	if err := cm.SavePending(ctx, PendingConfirmation{
+		CommandID: "cmd_debug_3", IMEI: "imei-debug-3", CommandKey: CommandKeyOscillation,
+		Expected:  ExpectedState{Path: "state.oscillation", Value: true},
+		ExpiresAt: time.Now().UTC().Add(-1 * time.Second),
+	}); err != nil {
+		t.Fatalf("SavePending failed: %v", err)
+	}
+
+	cm.SweepTimeouts(ctx)
+
+	ack := tracking.lastAck(t)
+	if ack.OK || ack.CommandID != "cmd_debug_3" || ack.Detail != AckDetailAckTimeout {
+		t.Fatalf("unexpected ack for timeout sweep with debugStateLogs=true: %+v", ack)
 	}
 }
 

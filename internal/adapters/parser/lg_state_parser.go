@@ -77,6 +77,61 @@ func (p *LGStateParser) ParseAirConditionerState(deviceID string, raw json.RawMe
 	return &state, nil
 }
 
+// oscillationFieldSource documenta el path JSON que AirConditionerState usa
+// para Oscillation — mismo valor que InspectOscillationField reporta como
+// Source, para que un log de diagnóstico no tenga que adivinarlo.
+const oscillationFieldSource = "windDirection.rotateUpDown"
+
+// OscillationDiagnostic describe lo que realmente había en el JSON crudo de
+// LG para el campo de oscilación (FASE LG-CMD-2E) — AirConditionerState.
+// WindDirection.RotateUpDown es un bool no-pointer, así que un campo
+// ausente en la respuesta de LG y un campo presente con valor false son
+// indistinguibles después de json.Unmarshal (ambos dan RotateUpDown=false).
+// Este diagnóstico inspecciona el mapa crudo directamente, antes de
+// cualquier default de Go, para poder distinguirlos.
+type OscillationDiagnostic struct {
+	// Present indica si windDirection.rotateUpDown existía explícitamente
+	// en el JSON crudo (no si su valor era true).
+	Present bool
+	// Source es el path JSON inspeccionado, para que un log no tenga que
+	// adivinar qué campo se está diagnosticando.
+	Source string
+	// Raw es el valor tal cual venía en el JSON (normalmente bool, pero se
+	// deja como any para no ocultar un tipo inesperado de LG, ej. un
+	// string "true" en vez de un bool).
+	Raw any
+}
+
+// InspectOscillationField inspecciona raw (el JSON tal cual lo devolvió LG,
+// antes de parsear a AirConditionerState) para determinar si
+// windDirection.rotateUpDown estaba realmente presente, y con qué valor
+// crudo — independiente de cómo AirConditionerState lo haya parseado. No
+// falla nunca: un raw vacío, inválido, o sin el path esperado simplemente
+// reporta Present=false, Raw=nil.
+func InspectOscillationField(raw json.RawMessage) OscillationDiagnostic {
+	diag := OscillationDiagnostic{Source: oscillationFieldSource}
+
+	if len(raw) == 0 {
+		return diag
+	}
+
+	var generic map[string]any
+	if err := json.Unmarshal(raw, &generic); err != nil {
+		return diag
+	}
+
+	windDirection, ok := generic["windDirection"].(map[string]any)
+	if !ok {
+		return diag
+	}
+
+	value, present := windDirection["rotateUpDown"]
+	diag.Present = present
+	diag.Raw = value
+
+	return diag
+}
+
 type PushOperation struct {
 	AirConOperationMode string `json:"airConOperationMode"`
 }

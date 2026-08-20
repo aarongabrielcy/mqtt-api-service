@@ -25,6 +25,8 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 		return err
 	}
 
+	s.logParsedStateIfEnabled(msg.DeviceID, mergedState, &newState)
+
 	if s.confirmationManager != nil {
 		s.confirmationManager.TryConfirm(ctx, msg.DeviceID, commands.CurrentState{
 			Power:             newState.Operation.AirConOperationMode == "POWER_ON",

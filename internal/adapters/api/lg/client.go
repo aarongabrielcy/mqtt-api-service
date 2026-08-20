@@ -15,6 +15,7 @@ import (
 	"go.uber.org/zap"
 
 	"mqtt-api-service/internal/infrastructure/config"
+	"mqtt-api-service/internal/infrastructure/debuglog"
 )
 
 type LGAPIClient struct {
@@ -102,6 +103,8 @@ func (c *LGAPIClient) addHeaders(req *http.Request, extra map[string]string) {
 	}
 }
 
+// doRequest es el wrapper delgado usado por la mayoría de llamadas, que no
+// necesitan el body de respuesta crudo además de lo ya decodificado en out.
 func (c *LGAPIClient) doRequest(
 	ctx context.Context,
 	method string,
@@ -110,6 +113,25 @@ func (c *LGAPIClient) doRequest(
 	headers map[string]string,
 	out any,
 ) error {
+	_, _, err := c.doRequestCapture(ctx, method, path, body, headers, out)
+	return err
+}
+
+// doRequestCapture es igual a doRequest, pero además devuelve el body crudo
+// de una respuesta exitosa y su status code — usado por GetState (FASE
+// LG-CMD-2E) para poder loguear el JSON raw de estado LG bajo
+// LG_DEBUG_STATE_LOGS sin que cada llamador tenga que reimplementar el
+// manejo HTTP. Nunca decodifica desde un stream: lee el body completo
+// primero (estas respuestas son pequeñas — estado/lista de un solo
+// dispositivo) para poder tanto decodificarlo como loguearlo.
+func (c *LGAPIClient) doRequestCapture(
+	ctx context.Context,
+	method string,
+	path string,
+	body any,
+	headers map[string]string,
+	out any,
+) (respBody []byte, statusCode int, err error) {
 
 	url := c.buildURL(path)
 
@@ -118,7 +140,7 @@ func (c *LGAPIClient) doRequest(
 	if body != nil {
 		payload, err := json.Marshal(body)
 		if err != nil {
-			return fmt.Errorf("failed to marshal request body: %w", err)
+			return nil, 0, fmt.Errorf("failed to marshal request body: %w", err)
 		}
 
 		bodyReader = bytes.NewBuffer(payload)
@@ -126,7 +148,7 @@ func (c *LGAPIClient) doRequest(
 
 	req, err := http.NewRequestWithContext(ctx, method, url, bodyReader)
 	if err != nil {
-		return fmt.Errorf("failed to create request: %w", err)
+		return nil, 0, fmt.Errorf("failed to create request: %w", err)
 	}
 
 	c.addHeaders(req, headers)
@@ -139,32 +161,35 @@ func (c *LGAPIClient) doRequest(
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
+		return nil, 0, fmt.Errorf("request failed: %w", err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
-		respBody, _ := io.ReadAll(resp.Body)
-		if len(respBody) > 500 {
-			respBody = respBody[:500]
+		errBody, _ := io.ReadAll(resp.Body)
+		if len(errBody) > 500 {
+			errBody = errBody[:500]
 		}
 
-		code, message := parseLGErrorBody(respBody)
+		code, message := parseLGErrorBody(errBody)
 
-		return &APIError{
+		return nil, resp.StatusCode, &APIError{
 			StatusCode: resp.StatusCode,
-			Body:       string(respBody),
+			Body:       string(errBody),
 			Code:       code,
 			Message:    message,
 		}
 	}
 
-	if out == nil {
-		return nil
+	respBody, err = io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, resp.StatusCode, fmt.Errorf("failed to read response body: %w", err)
 	}
 
-	if err := json.NewDecoder(resp.Body).Decode(out); err != nil {
-		return fmt.Errorf("failed to decode response: %w", err)
+	if out != nil {
+		if err := json.Unmarshal(respBody, out); err != nil {
+			return respBody, resp.StatusCode, fmt.Errorf("failed to decode response: %w", err)
+		}
 	}
 
 	c.log.Debug("LG API response received",
@@ -172,7 +197,27 @@ func (c *LGAPIClient) doRequest(
 		zap.Duration("duration", time.Since(start)),
 	)
 
-	return nil
+	return respBody, resp.StatusCode, nil
+}
+
+// logRawStateResponseIfEnabled loguea el JSON raw de una respuesta de estado
+// LG (FASE LG-CMD-2E), solo si LG_DEBUG_STATE_LOGS=true. Nunca incluye
+// headers/tokens — únicamente el body ya leído para decodificar, truncado a
+// un tamaño razonable.
+func (c *LGAPIClient) logRawStateResponseIfEnabled(deviceID string, statusCode int, body []byte) {
+	if c.cfg == nil || !c.cfg.LGCommands.DebugStateLogs {
+		return
+	}
+
+	truncatedBody, wasTruncated := debuglog.Truncate(body, debuglog.DefaultMaxBodyLogLength)
+
+	c.log.Debug("LG raw state response",
+		zap.String("deviceID", deviceID),
+		zap.Int("status", statusCode),
+		zap.Bool("bodyTruncated", wasTruncated),
+		zap.Int("bodyLength", len(body)),
+		zap.ByteString("body", truncatedBody),
+	)
 }
 
 func (e *APIError) Error() string {

@@ -77,6 +77,30 @@ func matchesExpected(expected ExpectedState, current CurrentState) bool {
 	}
 }
 
+// extractActualByPath devuelve el valor actual de CurrentState en
+// expected.Path, para diagnóstico (LG_DEBUG_STATE_LOGS, FASE LG-CMD-2E) —
+// espeja el switch de matchesExpected pero devuelve el valor crudo en vez de
+// un bool de match, así un log puede mostrar expected=true junto a
+// actual=false en vez de solo "no coincide".
+func extractActualByPath(path string, current CurrentState) any {
+	switch path {
+	case "state.power":
+		return current.Power
+	case "state.mode":
+		return current.Mode
+	case "climate.temperature.target":
+		return current.TemperatureTarget
+	case "state.airflow":
+		return current.Airflow
+	case "state.oscillation":
+		return current.Oscillation
+	case "state.powersave":
+		return current.PowerSave
+	default:
+		return nil
+	}
+}
+
 func toFloat(v any) (float64, bool) {
 	switch t := v.(type) {
 	case float64:

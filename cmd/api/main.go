@@ -7,11 +7,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	adaptercache "mqtt-api-service/internal/adapters/cache"
 	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
-	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
 	adapterkafka "mqtt-api-service/internal/adapters/kafka"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
@@ -42,6 +40,23 @@ func main() {
 	log.Info("Iniciando mqtt-api-service",
 		zap.String("version", "1.0.0"),
 		zap.String("environment", cfg.App.Environment),
+	)
+
+	// Log de startup seguro (FASE LG-CMD-2G): permite confirmar en logs, sin
+	// exponer ningún secreto, qué llegó realmente al proceso desde el env —
+	// en particular LOG_LEVEL/LG_DEBUG_STATE_LOGS, que es justo lo que se
+	// necesitaba verificar cuando ambos llegaban al contenedor (confirmado
+	// por docker inspect) pero los logs de diagnóstico de FASE LG-CMD-2E no
+	// aparecían.
+	log.Info("mqtt-api-service config loaded",
+		zap.String("appEnv", cfg.App.Environment),
+		zap.String("logLevel", cfg.App.LogLevel),
+		zap.Bool("debugStateLogs", cfg.LGCommands.DebugStateLogs),
+		zap.Bool("commandsEnabled", cfg.LGCommands.Enabled),
+		zap.Bool("kafkaBrokersConfigured", len(cfg.Kafka.Brokers) > 0),
+		zap.Bool("trackingGrpcAddressConfigured", cfg.GRPC.Address != ""),
+		zap.Bool("mongoConfigured", cfg.Mongo.URI != ""),
+		zap.Bool("redisConfigured", cfg.Redis.Addr != ""),
 	)
 
 	mongoClient, err := mongo.NewMongoClient(ctx, cfg, log)
@@ -132,6 +147,7 @@ func main() {
 			commandStatusPublisher,
 			log,
 			cfg.LGCommands.AckTimeout,
+			cfg.LGCommands.DebugStateLogs,
 		)
 		lgService.SetConfirmationManager(confirmationManager)
 
@@ -146,6 +162,7 @@ func main() {
 				TemperatureMaxC: cfg.LGCommands.TemperatureMaxC,
 			},
 			cfg.LGCommands.SeenTTL,
+			cfg.LGCommands.PostRefreshDelay,
 		)
 
 		commandConsumer = adapterkafka.NewCommandConsumer(
@@ -168,8 +185,13 @@ func main() {
 		log.Info("LG command bridge disabled (LG_COMMANDS_ENABLED=false)")
 	}
 
-	lgService.StartEventSubscriptionMonitor(ctx, 30*time.Minute)
-	lgService.StartDeviceStateMonitor(ctx, 2*time.Minute)
+	// FASE LG-CMD-2H: ambos intervalos eran hardcodeados (30 min / 2 min).
+	// El de estado en particular quedaba demasiado lejos de
+	// LG_COMMAND_ACK_TIMEOUT_SECONDS — un comando podía vencer antes de que
+	// corriera el siguiente ciclo de polling si LG no mandaba push
+	// inmediato. Ahora ambos vienen de config (defaults: 30s / 30min).
+	lgService.StartEventSubscriptionMonitor(ctx, cfg.LG.EventSubscriptionMonitorInterval)
+	lgService.StartDeviceStateMonitor(ctx, cfg.LG.StatePollInterval)
 
 	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",
@@ -191,35 +213,6 @@ func main() {
 		log.Error("Error suscribiendo a topic", zap.String("topic", inboxTopic), zap.Error(err))
 	}
 	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
-
-	log.Info(
-		"STARTING SERVER",
-		zap.String(
-			"address",
-			cfg.DeviceControlGRPC.Address,
-		),
-	)
-
-	deviceControlServer := grpcserver.NewDeviceControlServer(
-		lgService,
-	)
-
-	log.Info(
-		"Starting DeviceControl gRPC server",
-		zap.String("address", cfg.DeviceControlGRPC.Address),
-	)
-
-	go func() {
-		if err := grpcserver.Start(
-			cfg.DeviceControlGRPC.Address,
-			deviceControlServer,
-		); err != nil {
-			log.Fatal(
-				"gRPC server failed",
-				zap.Error(err),
-			)
-		}
-	}()
 
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)

@@ -36,7 +36,7 @@ func (s *DeviceService) List(ctx context.Context) ([]Device, error) {
 func (s *DeviceService) GetState(ctx context.Context, deviceID string) (json.RawMessage, error) {
 	var resp APIResponse[json.RawMessage]
 
-	err := s.client.doRequest(
+	rawBody, statusCode, err := s.client.doRequestCapture(
 		ctx,
 		"GET",
 		"/devices/"+deviceID+"/state",
@@ -47,6 +47,12 @@ func (s *DeviceService) GetState(ctx context.Context, deviceID string) (json.Raw
 	if err != nil {
 		return nil, err
 	}
+
+	// FASE LG-CMD-2E: bajo LG_DEBUG_STATE_LOGS=true, loguea el JSON crudo
+	// devuelto por LG API para este device — es la única forma de saber si
+	// windDirection.rotateUpDown (Oscillation) realmente vino en la
+	// respuesta o si el parser lo está defaulteando a false.
+	s.client.logRawStateResponseIfEnabled(deviceID, statusCode, rawBody)
 
 	return resp.Response, nil
 }

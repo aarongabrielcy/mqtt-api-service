@@ -2,6 +2,7 @@ package lg_service
 
 import (
 	"context"
+	"encoding/json"
 	"mqtt-api-service/internal/adapters/api/lg"
 	"mqtt-api-service/internal/adapters/cache"
 	mongo "mqtt-api-service/internal/adapters/mongo"
@@ -40,6 +41,11 @@ type LGService struct {
 	// estado cualquier comando LG pendiente (ver
 	// SetConfirmationManager/state_polling.go).
 	confirmationManager *commands.ConfirmationManager
+
+	// debugStateLogs habilita el log "LG state parsed" (FASE LG-CMD-2E) en
+	// state_polling.go/push_handler.go, con el diagnóstico de presencia del
+	// campo Oscillation en el JSON crudo de LG.
+	debugStateLogs bool
 }
 
 // SetConfirmationManager inyecta el ConfirmationManager del bridge de
@@ -74,14 +80,43 @@ func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepo
 		registryService:  lg.NewDeviceRegistryService(lgClient),
 		eventService:     lg.NewEventService(lgClient),
 		stateParser:      parser.NewLGStateParser(log),
-		stateNormalizer:  normalizers.NewLGStateNormalizer(log),
+		stateNormalizer:  normalizers.NewLGStateNormalizer(log, cfg.LGCommands.DebugStateLogs),
 		trackingClient:   trackingClient,
 		deviceStateStore: deviceStateStore,
 		log:              log,
 		clientID:         cfg.LGApi.ClientID,
 		repository:       repo,
 		devices:          make(map[string]*ManagedDevice),
+		debugStateLogs:   cfg.LGCommands.DebugStateLogs,
 	}, nil
+}
+
+// logParsedStateIfEnabled loguea el estado LG ya parseado (equivalente a
+// LGStateInfo) junto con un diagnóstico de presencia del campo Oscillation
+// en el JSON crudo (FASE LG-CMD-2E), solo si LG_DEBUG_STATE_LOGS=true.
+// Oscillation=false en el estado parseado puede significar "el dispositivo
+// reportó apagada la oscilación" O "el campo windDirection.rotateUpDown no
+// vino en esta respuesta y AirConditionerState lo defaulteó a false" — este
+// log es la única forma de distinguir ambos casos sin adivinar.
+func (s *LGService) logParsedStateIfEnabled(deviceID string, raw json.RawMessage, state *parser.AirConditionerState) {
+	if !s.debugStateLogs || state == nil {
+		return
+	}
+
+	diag := parser.InspectOscillationField(raw)
+
+	s.log.Debug("LG state parsed",
+		zap.String("deviceID", deviceID),
+		zap.Bool("power", state.Operation.AirConOperationMode == "POWER_ON"),
+		zap.String("mode", state.AirConJobMode.CurrentJobMode),
+		zap.String("operationMode", state.Operation.AirConOperationMode),
+		zap.String("airflow", state.AirFlow.WindStrength),
+		zap.Bool("oscillation", state.WindDirection.RotateUpDown),
+		zap.Bool("powersave", state.PowerSave.PowerSaveEnabled),
+		zap.Bool("oscillationPresent", diag.Present),
+		zap.String("oscillationSource", diag.Source),
+		zap.Any("oscillationRaw", diag.Raw),
+	)
 }
 
 func (s *LGService) Initialize(ctx context.Context) error {

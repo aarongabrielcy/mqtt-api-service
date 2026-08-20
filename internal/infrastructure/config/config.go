@@ -26,6 +26,21 @@ type Config struct {
 	// LGApi.ClientID (usado en headers HTTP hacia la LG API).
 	LG struct {
 		ClientID string
+
+		// StatePollInterval (FASE LG-CMD-2H) es cada cuánto se hace un GET
+		// /devices/:id/state normal (event=0/EventCodeTracking) para todos
+		// los dispositivos administrados. Antes de esta fase estaba
+		// hardcodeado a 2 minutos en cmd/api/main.go — con
+		// LG_COMMAND_ACK_TIMEOUT_SECONDS en 60s (ahora 90s), un intervalo de
+		// 2 minutos podía dejar vencer la confirmación de un comando antes
+		// de que corriera el siguiente ciclo de polling, si LG no mandaba
+		// push inmediato. Default 30s.
+		StatePollInterval time.Duration
+
+		// EventSubscriptionMonitorInterval es cada cuánto se revalida la
+		// suscripción push/event LG (antes hardcodeado a 30 minutos, ahora
+		// configurable con el mismo default).
+		EventSubscriptionMonitorInterval time.Duration
 	}
 
 	MQTT struct {
@@ -53,10 +68,6 @@ type Config struct {
 		MaxAttempts         int
 		RetryInitialBackoff time.Duration
 		RetryMaxBackoff     time.Duration
-	}
-
-	DeviceControlGRPC struct {
-		Address string
 	}
 
 	Mongo struct {
@@ -107,6 +118,24 @@ type Config struct {
 		SeenTTL          time.Duration
 		TemperatureMinC  float64
 		TemperatureMaxC  float64
+
+		// DebugStateLogs activa instrumentación de diagnóstico verbosa
+		// (FASE LG-CMD-2E): JSON raw de estado LG, diagnóstico de presencia
+		// del campo Oscillation, payload normalizado antes de gRPC, y
+		// expected-vs-actual en ConfirmationManager.TryConfirm. Nunca
+		// incluye headers/tokens. Default false en ambos casos
+		// (LG_DEBUG_STATE_LOGS sin definir o con valor inválido) — a
+		// diferencia de LGCommands.Enabled, este flag no tiene ningún
+		// comportamiento "seguro por defecto" que justifique defaults
+		// distintos entre unset e inválido.
+		DebugStateLogs bool
+
+		// PostRefreshDelay (FASE LG-CMD-2H) es cuánto esperar tras un
+		// executeLGCommand exitoso (u ambiguo, 2211) antes de hacer un GET
+		// /devices/:id/state puntual — LG puede tardar un instante en
+		// reflejar el cambio físico en su propio estado consultable.
+		// Default 1000ms.
+		PostRefreshDelay time.Duration
 	}
 }
 
@@ -123,6 +152,8 @@ func LoadConfig() (*Config, error) {
 	cfg.App.LogLevel = getEnv("LOG_LEVEL", "info")
 
 	cfg.LG.ClientID = getEnv("LG_CLIENT_ID", "")
+	cfg.LG.StatePollInterval = time.Duration(getEnvInt("LG_STATE_POLL_INTERVAL_SECONDS", 30)) * time.Second
+	cfg.LG.EventSubscriptionMonitorInterval = time.Duration(getEnvInt("LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", 1800)) * time.Second
 
 	cfg.LGApi.BaseURL = getEnv("LG_API_BASE_URL", "")
 	cfg.LGApi.APIKey = getEnv("LG_API_KEY", "")
@@ -155,8 +186,6 @@ func LoadConfig() (*Config, error) {
 	cfg.GRPC.RetryInitialBackoff = time.Duration(getEnvInt("TRACKING_GRPC_RETRY_INITIAL_BACKOFF_MS", 1000)) * time.Millisecond
 	cfg.GRPC.RetryMaxBackoff = time.Duration(getEnvInt("TRACKING_GRPC_RETRY_MAX_BACKOFF_MS", 4000)) * time.Millisecond
 
-	cfg.DeviceControlGRPC.Address = getEnv("DEVICE_CONTROL_GRPC_ADDRESS", ":50052")
-
 	cfg.Mongo.URI = getEnv("MONGO_URI", "mongodb://mongo:27017")
 	cfg.Mongo.DBName = getEnv("MONGO_DB_NAME", "mqtt-api-service")
 	cfg.Mongo.CollectionName = getEnv("MONGO_COLLECTION_NAME", "raw_lg_messages")
@@ -170,11 +199,17 @@ func LoadConfig() (*Config, error) {
 	cfg.Kafka.CommandPublishFailedTopic = getEnv("KAFKA_COMMAND_PUBLISH_FAILED_TOPIC", "device.command.publish_failed")
 
 	cfg.LGCommands.Enabled = getEnvBoolStrict("LG_COMMANDS_ENABLED", true, false)
-	cfg.LGCommands.AckTimeout = time.Duration(getEnvInt("LG_COMMAND_ACK_TIMEOUT_SECONDS", 60)) * time.Second
+	// AckTimeout default subido de 60s a 90s (FASE LG-CMD-2H): con
+	// StatePollInterval en 30s, 90s da margen para ~2-3 ciclos de polling
+	// normal más margen de red/procesamiento, en vez de quedar casi
+	// exactamente al filo de un solo ciclo de 60s como antes.
+	cfg.LGCommands.AckTimeout = time.Duration(getEnvInt("LG_COMMAND_ACK_TIMEOUT_SECONDS", 90)) * time.Second
 	cfg.LGCommands.AckSweepInterval = time.Duration(getEnvInt("LG_COMMAND_ACK_SWEEP_SECONDS", 5)) * time.Second
 	cfg.LGCommands.SeenTTL = time.Duration(getEnvInt("LG_COMMAND_SEEN_TTL_SECONDS", 600)) * time.Second
 	cfg.LGCommands.TemperatureMinC = getEnvFloat("LG_COMMAND_TEMPERATURE_MIN_C", 16)
 	cfg.LGCommands.TemperatureMaxC = getEnvFloat("LG_COMMAND_TEMPERATURE_MAX_C", 30)
+	cfg.LGCommands.DebugStateLogs = getEnvBoolStrict("LG_DEBUG_STATE_LOGS", false, false)
+	cfg.LGCommands.PostRefreshDelay = time.Duration(getEnvInt("LG_COMMAND_POST_REFRESH_DELAY_MS", 1000)) * time.Millisecond
 
 	return cfg, nil
 }
