@@ -1,65 +1,18 @@
 services:
-  api:
+  mqtt-api-service:
     build:
       context: .
       dockerfile: Dockerfile
     container_name: mqtt-api-service
     restart: unless-stopped
-    ports:
-      - "8080:8080"
+    env_file:
+      - ../config/mqtt-api-service/mqtt-api-service.env
     volumes:
-      - ./config/config.yaml:/app/config/config.yaml:ro
-      - ./.env:/app/.env:ro
-      - ./certs:/app/certs:ro
-    environment:
-      - MONGO_URI=mongodb://mongo:27017
-      - REDIS_ADDR=redis:6379
-    depends_on:
-      - mongo
-      - redis
+      - ../config/mqtt-api-service/certs:/app/certs:ro
     networks:
-      - mqtt-api-net
-
-  mongo:
-    image: mongo:7
-    container_name: mqtt-api-mongo
-    restart: unless-stopped
-    ports:
-      - "27017:27017"
-    volumes:
-      - mongo_data:/data/db
-    networks:
-      - mqtt-api-net
-
-
-  grpc-mock-server:
-    build:
-      context: ../grpc-mock-server
-      dockerfile: Dockerfile
-    container_name: tracking-grpc-mock
-    restart: unless-stopped
-    stdin_open: true
-    tty: true
-    ports:
-      - "50051:50051"
-    networks:
-      - mqtt-api-net
-
-  redis:
-    image: redis:7-alpine
-    container_name: mqtt-api-redis
-    restart: unless-stopped
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - mqtt-api-net
-
-volumes:
-  mongo_data:
-  redis_data:
+      - saas-network
 
 networks:
-  mqtt-api-net:
-    driver: bridge
+  saas-network:
+    external: true
+    name: saas-network

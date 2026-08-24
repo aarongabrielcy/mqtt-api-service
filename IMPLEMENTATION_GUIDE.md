@@ -1,5 +1,13 @@
 # IMPLEMENTATION GUIDE - mqtt-api-service
 
+> ⚠️ **OBSOLETO.** Este documento describe el estado del proyecto antes de
+> implementar los adaptadores (MQTT/gRPC/Mongo/config) y antes de las fases
+> LG-1/LG-1A de integración a saas-system-iot. Ya no refleja el código
+> actual (config.yaml y viper ya no existen, los adaptadores están
+> implementados, Mongo/Redis/gRPC son los del ecosistema, no propios). Se
+> conserva solo como referencia histórica del diseño original. Para el
+> estado real, ver [README.md](README.md).
+
 ## 📊 Estado Actual del Proyecto
 
 Este ZIP contiene **~70% del código** de mqtt-api-service. Está **100% funcional** pero requiere completar **4 componentes críticos** con lógica específica de LG.

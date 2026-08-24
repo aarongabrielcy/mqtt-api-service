@@ -6,7 +6,6 @@ Dockerfile
 docker-compose.yml
 
 .env
-config/config.yaml
 certs/
 
 bin/

@@ -10,6 +10,29 @@ import (
 	"go.uber.org/zap"
 )
 
+// logControlError registra el resultado de un ControlState fallido,
+// clasificando "device not connected" (LG 416/1222, condición operativa
+// esperada — ver lg.APIError.IsDeviceNotConnected) como warn en vez de
+// error, igual que ya hace state_polling.go para el polling. Reemplaza el
+// antiguo fmt.Printf("device %s desconectado...") que se disparaba para
+// CUALQUIER lg.APIError (no solo desconexión) además del log estructurado
+// ya existente, duplicando el log y con un mensaje engañoso cuando el error
+// no era en realidad una desconexión.
+func (s *LGService) logControlError(err error, action string, fields ...zap.Field) {
+	var apiErr *lg.APIError
+	if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
+		s.log.Warn("device disconnected",
+			append(fields,
+				zap.String("lgErrorCode", apiErr.Code),
+				zap.Int("httpStatus", apiErr.StatusCode),
+			)...,
+		)
+		return
+	}
+
+	s.log.Error(action, append(fields, zap.Error(err))...)
+}
+
 func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool) error {
 	s.log.Info("SetDevicePower called",
 		zap.String("deviceID", deviceID),
@@ -36,12 +59,7 @@ func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s desconectado: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set device power", zap.String("deviceID", deviceID), zap.Error(err))
+		s.logControlError(err, "failed to set device power", zap.String("deviceID", deviceID))
 		return err
 	}
 
@@ -70,12 +88,7 @@ func (s *LGService) SetDeviceTemperature(ctx context.Context, deviceID string, t
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s desconectado: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set device temperature", zap.String("deviceID", deviceID), zap.Error(err))
+		s.logControlError(err, "failed to set device temperature", zap.String("deviceID", deviceID))
 		return err
 	}
 
@@ -116,17 +129,10 @@ func (s *LGService) SetAirFlow(ctx context.Context, deviceID string, strength st
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s disconnected: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set air flow",
+		s.logControlError(err, "failed to set air flow",
 			zap.String("deviceID", deviceID),
 			zap.String("strength", strength),
-			zap.Error(err),
 		)
-
 		return err
 	}
 
@@ -171,17 +177,10 @@ func (s *LGService) SetOperationMode(ctx context.Context, deviceID string, mode 
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s disconnected: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set operation mode",
+		s.logControlError(err, "failed to set operation mode",
 			zap.String("deviceID", deviceID),
 			zap.String("mode", mode),
-			zap.Error(err),
 		)
-
 		return err
 	}
 
@@ -215,17 +214,10 @@ func (s *LGService) SetOscillation(ctx context.Context, deviceID string, enabled
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s disconnected: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set oscillation",
+		s.logControlError(err, "failed to set oscillation",
 			zap.String("deviceID", deviceID),
 			zap.Bool("enabled", enabled),
-			zap.Error(err),
 		)
-
 		return err
 	}
 
@@ -259,17 +251,10 @@ func (s *LGService) SetPowerSave(ctx context.Context, deviceID string, enabled b
 	}
 
 	if err := s.deviceService.ControlState(ctx, deviceID, body); err != nil {
-		var apiErr *lg.APIError
-		if errors.As(err, &apiErr) {
-			fmt.Printf("device %s disconnected: %v\n", deviceID, apiErr)
-		}
-
-		s.log.Error("failed to set power save",
+		s.logControlError(err, "failed to set power save",
 			zap.String("deviceID", deviceID),
 			zap.Bool("enabled", enabled),
-			zap.Error(err),
 		)
-
 		return err
 	}
 

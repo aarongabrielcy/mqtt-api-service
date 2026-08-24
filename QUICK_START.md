@@ -1,5 +1,13 @@
 # QUICK START - mqtt-api-service
 
+> ⚠️ **OBSOLETO.** Este documento es el onboarding original de la primera
+> entrega (ZIP) del proyecto, antes de implementar los adaptadores y antes
+> de las fases LG-1/LG-1A. Ya no refleja el código actual: no hay
+> `config.yaml` ni viper, los adaptadores ya están implementados, y Mongo
+> /Redis/gRPC son la infraestructura compartida de saas-system-iot, no
+> instancias propias. Se conserva solo como referencia histórica. Para el
+> estado real, ver [README.md](README.md).
+
 ## 📦 Lo que recibiste
 
 Un **ZIP completo** de `mqtt-api-service` con estructura lista para desarrollar. **~70% del código** está hecho y funcional.

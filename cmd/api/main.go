@@ -7,24 +7,15 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
-
-	//"mqtt-api-service/internal/adapters/api"
-	//"mqtt-api-service/internal/adapters/grpc"
-	//"mqtt-api-service/internal/adapters/mongo"
 
 	adaptercache "mqtt-api-service/internal/adapters/cache"
 	grpcclient "mqtt-api-service/internal/adapters/grpc/client"
-	grpcserver "mqtt-api-service/internal/adapters/grpc/server"
+	adapterkafka "mqtt-api-service/internal/adapters/kafka"
 	mongo "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/adapters/mqtt"
+	appcommands "mqtt-api-service/internal/application/commands"
 	lg_service "mqtt-api-service/internal/application/use_case/lg"
 	infracache "mqtt-api-service/internal/infrastructure/cache"
-
-	//"mqtt-api-service/internal/adapters/parser"
-	//"mqtt-api-service/internal/application/normalizers"
-
-	//"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/config"
 	"mqtt-api-service/internal/infrastructure/logger"
 
@@ -35,8 +26,8 @@ func main() {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	// 1. Configuración
-	cfg, err := config.LoadConfig("config/config.yaml")
+	// 1. Configuración (100% variables de entorno, ver .env.example)
+	cfg, err := config.LoadConfig()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error cargando config: %v\n", err)
 		os.Exit(1)
@@ -51,19 +42,31 @@ func main() {
 		zap.String("environment", cfg.App.Environment),
 	)
 
-	mongoClient, err := mongo.NewMongoClient(ctx, cfg)
+	// Log de startup seguro (FASE LG-CMD-2G): permite confirmar en logs, sin
+	// exponer ningún secreto, qué llegó realmente al proceso desde el env —
+	// en particular LOG_LEVEL/LG_DEBUG_STATE_LOGS, que es justo lo que se
+	// necesitaba verificar cuando ambos llegaban al contenedor (confirmado
+	// por docker inspect) pero los logs de diagnóstico de FASE LG-CMD-2E no
+	// aparecían.
+	log.Info("mqtt-api-service config loaded",
+		zap.String("appEnv", cfg.App.Environment),
+		zap.String("logLevel", cfg.App.LogLevel),
+		zap.Bool("debugStateLogs", cfg.LGCommands.DebugStateLogs),
+		zap.Bool("commandsEnabled", cfg.LGCommands.Enabled),
+		zap.Bool("kafkaBrokersConfigured", len(cfg.Kafka.Brokers) > 0),
+		zap.Bool("trackingGrpcAddressConfigured", cfg.GRPC.Address != ""),
+		zap.Bool("mongoConfigured", cfg.Mongo.URI != ""),
+		zap.Bool("redisConfigured", cfg.Redis.Addr != ""),
+	)
+
+	mongoClient, err := mongo.NewMongoClient(ctx, cfg, log)
 	if err != nil {
 		log.Fatal("failed to connect to mongo", zap.Error(err))
 	}
 
-	rawMessageRepo := mongo.NewRawMessageService(mongoClient, "mqtt_api_service", "raw_messages")
+	rawMessageRepo := mongo.NewRawMessageService(mongoClient, cfg.Mongo.DBName, cfg.Mongo.CollectionName)
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
-	}
-
-	redisClient, err := infracache.NewRedisClient(ctx, redisAddr, log)
+	redisClient, err := infracache.NewRedisClient(ctx, cfg.Redis.Addr, log)
 	if err != nil {
 		log.Fatal("failed to connect to redis", zap.Error(err))
 	}
@@ -87,6 +90,10 @@ func main() {
 	grpcCfg := grpcclient.Config{
 		Address:           cfg.GRPC.Address,
 		ConnectionTimeout: cfg.GRPC.ConnectionTimeout,
+		RequestTimeout:    cfg.GRPC.RequestTimeout,
+		MaxAttempts:       cfg.GRPC.MaxAttempts,
+		InitialBackoff:    cfg.GRPC.RetryInitialBackoff,
+		MaxBackoff:        cfg.GRPC.RetryMaxBackoff,
 	}
 
 	grpcTrackingClient, err := grpcclient.New(
@@ -118,8 +125,73 @@ func main() {
 		log.Fatal("Error inicializando LGService", zap.Error(err))
 	}
 
-	lgService.StartEventSubscriptionMonitor(ctx, 30*time.Minute)
-	lgService.StartDeviceStateMonitor(ctx, 2*time.Minute)
+	// Bridge de comandos LG por Kafka (FASE LG-CMD-1/2). Si
+	// LG_COMMANDS_ENABLED=false, ni el consumer ni el sweep de confirmación
+	// arrancan — el servicio se comporta igual que antes de esta fase.
+	var commandConsumer *adapterkafka.CommandConsumer
+	var commandStatusPublisher *adapterkafka.CommandStatusPublisher
+
+	if cfg.LGCommands.Enabled {
+		ackPublisher := appcommands.NewAckPublisher(grpcTrackingClient, log)
+
+		commandStatusPublisher = adapterkafka.NewCommandStatusPublisher(
+			cfg.Kafka.Brokers,
+			cfg.Kafka.CommandSentTopic,
+			cfg.Kafka.CommandPublishFailedTopic,
+			log,
+		)
+
+		confirmationManager := appcommands.NewConfirmationManager(
+			redisClient,
+			ackPublisher,
+			commandStatusPublisher,
+			log,
+			cfg.LGCommands.AckTimeout,
+			cfg.LGCommands.DebugStateLogs,
+		)
+		lgService.SetConfirmationManager(confirmationManager)
+
+		dispatcher := appcommands.NewCommandDispatcher(
+			log,
+			lgService,
+			confirmationManager,
+			ackPublisher,
+			commandStatusPublisher,
+			appcommands.ParseConfig{
+				TemperatureMinC: cfg.LGCommands.TemperatureMinC,
+				TemperatureMaxC: cfg.LGCommands.TemperatureMaxC,
+			},
+			cfg.LGCommands.SeenTTL,
+			cfg.LGCommands.PostRefreshDelay,
+		)
+
+		commandConsumer = adapterkafka.NewCommandConsumer(
+			cfg.Kafka.Brokers,
+			cfg.Kafka.CommandTopic,
+			cfg.Kafka.CommandConsumerGroup,
+			dispatcher,
+			log,
+		)
+
+		go commandConsumer.Run(ctx)
+		confirmationManager.StartSweep(ctx, cfg.LGCommands.AckSweepInterval)
+
+		log.Info("LG command bridge enabled",
+			zap.String("topic", cfg.Kafka.CommandTopic),
+			zap.String("group", cfg.Kafka.CommandConsumerGroup),
+			zap.Strings("brokers", cfg.Kafka.Brokers),
+		)
+	} else {
+		log.Info("LG command bridge disabled (LG_COMMANDS_ENABLED=false)")
+	}
+
+	// FASE LG-CMD-2H: ambos intervalos eran hardcodeados (30 min / 2 min).
+	// El de estado en particular quedaba demasiado lejos de
+	// LG_COMMAND_ACK_TIMEOUT_SECONDS — un comando podía vencer antes de que
+	// corriera el siguiente ciclo de polling si LG no mandaba push
+	// inmediato. Ahora ambos vienen de config (defaults: 30s / 30min).
+	lgService.StartEventSubscriptionMonitor(ctx, cfg.LG.EventSubscriptionMonitorInterval)
+	lgService.StartDeviceStateMonitor(ctx, cfg.LG.StatePollInterval)
 
 	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",
@@ -129,8 +201,8 @@ func main() {
 		return nil
 	}
 
-	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID)
-	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID)
+	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.LG.ClientID)
+	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.LG.ClientID)
 
 	if err := client.Subscribe(ctx, pushTopic, lgService.HandlePushMessage); err != nil {
 		log.Error("Error suscribiendo a topic", zap.String("topic", pushTopic), zap.Error(err))
@@ -142,38 +214,6 @@ func main() {
 	}
 	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
 
-	log.Info(
-		"STARTING SERVER",
-		zap.String(
-			"address",
-			cfg.DeviceControlGRPC.Address,
-		),
-	)
-
-	deviceControlServer := grpcserver.NewDeviceControlServer(
-		lgService,
-	)
-
-	log.Info(
-		"Starting DeviceControl gRPC server",
-		zap.String("address", cfg.DeviceControlGRPC.Address),
-	)
-
-	go func() {
-		if err := grpcserver.Start(
-			cfg.DeviceControlGRPC.Address,
-			deviceControlServer,
-		); err != nil {
-			log.Fatal(
-				"gRPC server failed",
-				zap.Error(err),
-			)
-		}
-	}()
-
-	//lgService.SetDeviceTemperature(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", 23.0)
-	//lgService.SetDevicePower(ctx, "c31d67537eaaad08efeb6ee111c5ecd2b8316b79147e5a69d18642ab78bea3ca", true)
-
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
@@ -182,5 +222,17 @@ func main() {
 
 	log.Info("Señal de shutdown recibida")
 	cancel()
+
+	if commandConsumer != nil {
+		if err := commandConsumer.Close(); err != nil {
+			log.Warn("error closing kafka command consumer", zap.Error(err))
+		}
+	}
+	if commandStatusPublisher != nil {
+		if err := commandStatusPublisher.Close(); err != nil {
+			log.Warn("error closing kafka command status publisher", zap.Error(err))
+		}
+	}
+
 	log.Info("mqtt-api-service detenido")
 }
