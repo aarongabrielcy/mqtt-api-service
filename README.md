@@ -5,6 +5,11 @@ propietario. **Por ahora integra únicamente LG ThinQ**; Samsung, Daewoo y
 Alexa quedan fuera de esta fase. Normaliza los eventos LG a un payload JSON
 compatible con Payload Profiles y los reenvía por gRPC a `ingestion-service`.
 
+For permanent repository operating rules for AI-assisted changes, see [CLAUDE.md](CLAUDE.md).
+For deep, evidence-based repository context (architecture, LG/vendor integration flow, Kafka
+command bridge, confirmation/synthetic ACK, Redis, gRPC boundary, known risks), see
+[docs/sdo/PROJECT_CONTEXT.md](docs/sdo/PROJECT_CONTEXT.md).
+
 ```
 LG ThinQ API / MQTT
         │
