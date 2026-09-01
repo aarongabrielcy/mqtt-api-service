@@ -82,6 +82,20 @@ before reporting completion.
   decision and are outside Claude's authority under SDO V1, regardless of how confident the
   validation evidence looks.
 
+## Final Report Consolidation and READY FOR VALIDATION Read-Back
+
+Before transitioning an authorized Development Task to READY FOR VALIDATION:
+
+1. Maintain exactly one current authoritative Final Claude Report for the Task. Interim, completion, or corrective conclusions must not remain simultaneously authoritative. Replace stale conclusions or explicitly mark them superseded while preserving useful historical evidence.
+
+2. Ensure the current Final Claude Report is internally consistent with the implementation state, executed validation evidence, remaining human gates, and the transition being requested. Do not claim a previously pending human gate is satisfied without current evidence.
+
+3. Re-fetch the authoritative Notion Task immediately before the READY FOR VALIDATION transition. Verify that the current Final Claude Report is durably present and internally consistent and that any previously pending human gate claimed as satisfied has current supporting evidence in the Task/report.
+
+4. If the Notion read-back fails or reveals stale, contradictory, missing, or unpersisted report state, do not transition to READY FOR VALIDATION. Correct and persist the report state first, then read it back again.
+
+5. This procedure grants no SDO review or approval authority. Claude must not set AI Review, APPROVED, or DONE and must not independently expand its authorized Task scope or architecture authority.
+
 ## 5. Final Development Report
 
 When all FR/AC gates executable by Claude pass, append a Final Development Report (in the task's
