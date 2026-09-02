@@ -2,12 +2,23 @@ package commands
 
 import "encoding/json"
 
+// CommandRoute values (COMMAND-ROUTING-CONTRACT-1, Option C): the logical
+// command-execution route / ownership discriminator carried top-level on
+// device.command.requested. Not a device type, manufacturer, firmware
+// family, transport, or microservice name. VendorCloud is the only route
+// mqtt-api-service may own/execute.
+const (
+	CommandRouteDirectDevice = "DIRECT_DEVICE"
+	CommandRouteVendorCloud  = "VENDOR_CLOUD"
+)
+
 // DeviceCommandEvent es la forma del evento Kafka device.command.requested
 // tal como lo publica tracking-platform (ver libs/contracts de ese repo).
 // Payload se mantiene como JSON crudo porque su forma varía según el origen
 // (manual vs. automation) y según el commandKey resuelto.
 type DeviceCommandEvent struct {
 	CommandID         string          `json:"commandId"`
+	CommandRoute      string          `json:"commandRoute,omitempty"`
 	ClientID          string          `json:"clientId"`
 	AssetID           string          `json:"assetId,omitempty"`
 	DeviceID          string          `json:"deviceId,omitempty"`

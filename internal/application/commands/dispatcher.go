@@ -124,25 +124,32 @@ func (d *CommandDispatcher) Dispatch(ctx context.Context, event commandsdomain.D
 
 	mqttTopic := fmt.Sprintf(commandTopicFormat, event.IMEI)
 
+	// COMMAND-ROUTING-CONTRACT-1 (Option C) ownership gate, strict cutover
+	// (Corrective Cycle 1 / AC-08): this bridge executes only an explicit
+	// VENDOR_CLOUD route. DIRECT_DEVICE, any unknown non-empty value, and a
+	// missing (empty) route are all ignored — no fallback to the
+	// LooksLikeLGCommand ambiguity heuristic. The producer-first runtime
+	// gate proving all current producers emit a valid commandRoute has been
+	// satisfied (see Task Human Runtime Gate Evidence), so the prior
+	// missing-route LooksLikeLGCommand compatibility fallback is removed.
+	switch event.CommandRoute {
+	case commandsdomain.CommandRouteVendorCloud:
+		// explicit ownership — proceed to resolve/execute below
+	default:
+		d.log.Debug("ignoring command event: commandRoute not owned by mqtt-api-service",
+			zap.String("commandId", event.CommandID),
+			zap.String("imei", event.IMEI),
+			zap.String("commandRoute", event.CommandRoute),
+		)
+		return nil
+	}
+
 	commandKey, ok := ResolveCommandKey(event)
 	if !ok {
-		if !LooksLikeLGCommand(event) {
-			// No indicio de LG en absoluto (ej. ESP32 legacy commandCode
-			// 101-106 sin commandKey/metadata) — este evento no está
-			// dirigido a este dispatcher. mqtt-adapter-service ya lo
-			// procesa en su propio consumer group sobre el mismo topic;
-			// publicar failed/ACK aquí competiría con su
-			// device.command.sent legítimo para el mismo commandId (bug
-			// confirmado en vivo, FASE LG-CMD-E2E-DIAG). Se ignora en
-			// silencio.
-			d.log.Debug("ignoring command event not addressed to LG",
-				zap.String("commandId", event.CommandID),
-				zap.String("imei", event.IMEI),
-				zap.Int("commandCode", event.CommandCode),
-			)
-			return nil
-		}
-
+		// event.CommandRoute == VENDOR_CLOUD is guaranteed at this point (the
+		// switch above returns for every other value), so ownership is
+		// always certain here: an unresolved commandKey is always a real
+		// unsupported-command failure, never silently ignored.
 		d.log.Warn("unsupported command, cannot resolve commandKey",
 			zap.String("commandId", event.CommandID),
 			zap.String("imei", event.IMEI),

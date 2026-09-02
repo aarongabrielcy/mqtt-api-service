@@ -172,9 +172,10 @@ func TestDispatch_Success_PublishesSentAndSavesPending(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_1",
-		IMEI:        "imei-1",
-		CommandCode: 201,
+		CommandID:    "cmd_1",
+		IMEI:         "imei-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -214,9 +215,10 @@ func TestDispatch_PostCommandRefresh_TriggeredAfterSuccess(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_refresh_1",
-		IMEI:        "imei-refresh-1",
-		CommandCode: 201,
+		CommandID:    "cmd_refresh_1",
+		IMEI:         "imei-refresh-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -240,9 +242,10 @@ func TestDispatch_PostCommandRefresh_ConfirmsWhenStateMatches(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_refresh_2",
-		IMEI:        "imei-refresh-2",
-		CommandCode: 201,
+		CommandID:    "cmd_refresh_2",
+		IMEI:         "imei-refresh-2",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -281,9 +284,10 @@ func TestDispatch_PostCommandRefresh_DoesNotFalselyConfirmOnMismatch(t *testing.
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_refresh_3",
-		IMEI:        "imei-refresh-3",
-		CommandCode: 201,
+		CommandID:    "cmd_refresh_3",
+		IMEI:         "imei-refresh-3",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -325,9 +329,10 @@ func TestDispatch_DeviceTimeout2211_PostCommandRefresh_AlsoTriggered(t *testing.
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_refresh_4",
-		IMEI:        "imei-refresh-4",
-		CommandCode: 201,
+		CommandID:    "cmd_refresh_4",
+		IMEI:         "imei-refresh-4",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":false}`),
 	}
 
@@ -355,9 +360,10 @@ func TestDispatch_Oscillation_PowerOffPrecondition_FailsFastWithoutCallingLGAPI(
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_osc_1",
-		IMEI:        "imei-osc-1",
-		CommandCode: 205, // lg.oscillation
+		CommandID:    "cmd_osc_1",
+		IMEI:         "imei-osc-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  205, // lg.oscillation
 		Payload:     json.RawMessage(`{"enabled":true}`),
 	}
 
@@ -397,9 +403,10 @@ func TestDispatch_Oscillation_PowerOn_NormalFlow(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_osc_2",
-		IMEI:        "imei-osc-2",
-		CommandCode: 205,
+		CommandID:    "cmd_osc_2",
+		IMEI:         "imei-osc-2",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  205,
 		Payload:     json.RawMessage(`{"enabled":true}`),
 	}
 
@@ -434,9 +441,10 @@ func TestDispatch_Oscillation_Disable_NotBlockedByPowerOffPrecondition(t *testin
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_osc_3",
-		IMEI:        "imei-osc-3",
-		CommandCode: 205,
+		CommandID:    "cmd_osc_3",
+		IMEI:         "imei-osc-3",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  205,
 		Payload:     json.RawMessage(`{"enabled":false}`),
 	}
 
@@ -459,9 +467,10 @@ func TestDispatch_Oscillation_UnknownPowerState_NotBlocked(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_osc_4",
-		IMEI:        "imei-osc-4",
-		CommandCode: 205,
+		CommandID:    "cmd_osc_4",
+		IMEI:         "imei-osc-4",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  205,
 		Payload:     json.RawMessage(`{"enabled":true}`),
 	}
 
@@ -499,10 +508,11 @@ func TestDispatch_OtherCommands_NotAffectedByOscillationPrecondition(t *testing.
 			ctx := context.Background()
 
 			event := commandsdomain.DeviceCommandEvent{
-				CommandID:   "cmd_other_" + tc.name,
-				IMEI:        "imei-other-" + tc.name,
-				CommandCode: tc.commandCode,
-				Payload:     json.RawMessage(tc.payload),
+				CommandID:    "cmd_other_" + tc.name,
+				IMEI:         "imei-other-" + tc.name,
+				CommandRoute: commandsdomain.CommandRouteVendorCloud,
+				CommandCode:  tc.commandCode,
+				Payload:      json.RawMessage(tc.payload),
 			}
 
 			if err := dispatcher.Dispatch(ctx, event); err != nil {
@@ -537,9 +547,10 @@ func TestDispatch_RaceFix_StateConfirmedDuringExecution_DoesNotLoseConfirmation(
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_race_1",
-		IMEI:        "imei-race-1",
-		CommandCode: 201,
+		CommandID:    "cmd_race_1",
+		IMEI:         "imei-race-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -569,9 +580,10 @@ func TestDispatch_RaceFix_PendingExistsBeforeLGAPICallReturns(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_race_2",
-		IMEI:        "imei-race-2",
-		CommandCode: 201,
+		CommandID:    "cmd_race_2",
+		IMEI:         "imei-race-2",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -595,9 +607,10 @@ func TestDispatch_LGAPIError_PublishesFailedAndAckFalse(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_2",
-		IMEI:        "imei-2",
-		CommandCode: 201,
+		CommandID:    "cmd_2",
+		IMEI:         "imei-2",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -629,9 +642,10 @@ func TestDispatch_DeviceDisconnected_DetailIsDeviceDisconnected(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_3",
-		IMEI:        "imei-3",
-		CommandCode: 201,
+		CommandID:    "cmd_3",
+		IMEI:         "imei-3",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -662,9 +676,10 @@ func TestDispatch_DeviceTimeout2211_DoesNotFailImmediately_RegistersPending(t *t
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_timeout_1",
-		IMEI:        "imei-timeout-1",
-		CommandCode: 201,
+		CommandID:    "cmd_timeout_1",
+		IMEI:         "imei-timeout-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":false}`),
 	}
 
@@ -702,9 +717,10 @@ func TestDispatch_DeviceTimeout2211_ThenStateConfirms_PublishesConfirmedAfterDev
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_timeout_2",
-		IMEI:        "imei-timeout-2",
-		CommandCode: 201,
+		CommandID:    "cmd_timeout_2",
+		IMEI:         "imei-timeout-2",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":false}`),
 	}
 
@@ -726,9 +742,10 @@ func TestDispatch_DeviceTimeout2211_ThenSweepExpires_PublishesFailedAndUnconfirm
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_timeout_3",
-		IMEI:        "imei-timeout-3",
-		CommandCode: 201,
+		CommandID:    "cmd_timeout_3",
+		IMEI:         "imei-timeout-3",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":false}`),
 	}
 
@@ -764,9 +781,10 @@ func TestDispatch_DuplicateCommandId_DoesNotReexecute(t *testing.T) {
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_4",
-		IMEI:        "imei-4",
-		CommandCode: 201,
+		CommandID:    "cmd_4",
+		IMEI:         "imei-4",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
 		Payload:     json.RawMessage(`{"power":true}`),
 	}
 
@@ -790,14 +808,15 @@ func TestDispatch_UnsupportedCommandKey_PublishesFailedAndAck(t *testing.T) {
 	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
 	ctx := context.Background()
 
-	// commandCode 250 is inside the LG-reserved 200-299 range (so
-	// LooksLikeLGCommand is true — this event IS meant for LG) but isn't
-	// one of the 6 mapped codes, so it stays unresolvable: a real
-	// unsupported-command case, not an ESP32/foreign event.
+	// commandCode 250 is inside the LG-reserved 200-299 range but isn't one
+	// of the 6 mapped codes, so it stays unresolvable. With explicit
+	// VENDOR_CLOUD routing, ownership is certain: a real unsupported-command
+	// case, not an ESP32/foreign event.
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_5",
-		IMEI:        "imei-5",
-		CommandCode: 250,
+		CommandID:    "cmd_5",
+		IMEI:         "imei-5",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  250,
 		Payload:     json.RawMessage(`{}`),
 	}
 
@@ -822,11 +841,14 @@ func TestDispatch_ForeignCommand_SilentlyIgnored(t *testing.T) {
 	// Evidencia real (FASE LG-CMD-E2E-DIAG): comandos ESP32 legacy
 	// (commandCode 101, sin commandKey/metadata) llegan al mismo topic
 	// device.command.requested que ya consume mqtt-adapter-service en su
-	// propio consumer group. Antes de este fix, mqtt-api-service los
-	// trataba como "unsupported" y publicaba device.command.publish_failed
-	// + un ACK sintético ok:false — compitiendo con el device.command.sent
-	// legítimo de mqtt-adapter-service para el mismo commandId. Ahora deben
-	// ignorarse en silencio: cero llamadas a Kafka o al ACK sintético.
+	// propio consumer group. mqtt-api-service no debe tratarlos como
+	// "unsupported" ni publicar device.command.publish_failed + un ACK
+	// sintético ok:false — competiría con el device.command.sent legítimo
+	// de mqtt-adapter-service para el mismo commandId. Deben ignorarse en
+	// silencio: cero llamadas a Kafka o al ACK sintético. Bajo el strict
+	// cutover (Corrective Cycle 1 / AC-08) este evento no trae commandRoute,
+	// así que se ignora directamente en el ownership gate — no llega a
+	// ResolveCommandKey/LooksLikeLGCommand.
 	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
 	ctx := context.Background()
 
@@ -854,14 +876,167 @@ func TestDispatch_ForeignCommand_SilentlyIgnored(t *testing.T) {
 	}
 }
 
+// ── COMMAND-ROUTING-CONTRACT-1 tests ─────────────────────────────────────────
+
+func TestDispatch_CommandRouteVendorCloud_Executes(t *testing.T) {
+	dispatcher, lg, status, _, _ := newTestDispatcher(t, nil)
+	ctx := context.Background()
+
+	event := commandsdomain.DeviceCommandEvent{
+		CommandID:    "cmd_route_1",
+		IMEI:         "imei-route-1",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  201,
+		Payload:      json.RawMessage(`{"power":true}`),
+	}
+
+	if err := dispatcher.Dispatch(ctx, event); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if lg.callCount() != 1 {
+		t.Errorf("expected 1 LG API call for explicit VENDOR_CLOUD, got %d", lg.callCount())
+	}
+	sent, failed := status.counts()
+	if sent != 1 || failed != 0 {
+		t.Errorf("expected 1 sent / 0 failed, got sent=%d failed=%d", sent, failed)
+	}
+}
+
+func TestDispatch_CommandRouteDirectDevice_NotExecuted(t *testing.T) {
+	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
+	ctx := context.Background()
+
+	// commandCode 201 is inside the LG-reserved range and would otherwise
+	// resolve — explicit DIRECT_DEVICE routing must still block execution,
+	// with no fallback to the commandCode/commandType heuristic.
+	event := commandsdomain.DeviceCommandEvent{
+		CommandID:    "cmd_route_2",
+		IMEI:         "imei-route-2",
+		CommandRoute: commandsdomain.CommandRouteDirectDevice,
+		CommandCode:  201,
+		Payload:      json.RawMessage(`{"power":true}`),
+	}
+
+	if err := dispatcher.Dispatch(ctx, event); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if lg.callCount() != 0 {
+		t.Error("LG API should never be called for commandRoute=DIRECT_DEVICE")
+	}
+	sent, failed := status.counts()
+	if sent != 0 || failed != 0 {
+		t.Errorf("expected 0 status calls for commandRoute=DIRECT_DEVICE, got sent=%d failed=%d", sent, failed)
+	}
+	if tracking.callCount() != 0 {
+		t.Error("no synthetic ack should be published for commandRoute=DIRECT_DEVICE")
+	}
+}
+
+func TestDispatch_CommandRouteUnknown_NotExecuted(t *testing.T) {
+	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
+	ctx := context.Background()
+
+	event := commandsdomain.DeviceCommandEvent{
+		CommandID:    "cmd_route_3",
+		IMEI:         "imei-route-3",
+		CommandRoute: "SOME_UNKNOWN_ROUTE",
+		CommandCode:  201,
+		Payload:      json.RawMessage(`{"power":true}`),
+	}
+
+	if err := dispatcher.Dispatch(ctx, event); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if lg.callCount() != 0 {
+		t.Error("LG API should never be called for an unknown commandRoute")
+	}
+	sent, failed := status.counts()
+	if sent != 0 || failed != 0 {
+		t.Errorf("expected 0 status calls for an unknown commandRoute, got sent=%d failed=%d", sent, failed)
+	}
+	if tracking.callCount() != 0 {
+		t.Error("no synthetic ack should be published for an unknown commandRoute")
+	}
+}
+
+func TestDispatch_CommandRouteVendorCloud_UnresolvedCommandKey_PublishesFailedAndAck(t *testing.T) {
+	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
+	ctx := context.Background()
+
+	// commandCode 999 has no LG mapping and no metadata/commandKey. With no
+	// explicit route, this would be silently ignored (foreign/ESP32-shaped).
+	// With explicit VENDOR_CLOUD routing, ownership is certain, so it must
+	// surface as a real unsupported-command failure instead.
+	event := commandsdomain.DeviceCommandEvent{
+		CommandID:    "cmd_route_4",
+		IMEI:         "imei-route-4",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  999,
+		Payload:      json.RawMessage(`{}`),
+	}
+
+	if err := dispatcher.Dispatch(ctx, event); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if lg.callCount() != 0 {
+		t.Error("LG API should never be called for an unresolvable commandKey")
+	}
+	_, failed := status.counts()
+	if failed != 1 {
+		t.Errorf("expected 1 failed event for explicit VENDOR_CLOUD with unresolvable commandKey, got %d", failed)
+	}
+	ack := tracking.lastAck(t)
+	if ack.OK || ack.Detail != AckDetailUnsupportedCommand {
+		t.Errorf("unexpected ack: %+v", ack)
+	}
+}
+
+// COMMAND-ROUTING-CONTRACT-1 Corrective Cycle 1 (AC-08): the producer-first
+// runtime gate is satisfied, so the legacy missing-route LooksLikeLGCommand
+// compatibility fallback is removed. Missing commandRoute must now be
+// non-executable exactly like an unknown/opposite route — even for a
+// commandCode within the LG-reserved numeric range that the old heuristic
+// would have recognized.
+func TestDispatch_CommandRouteMissing_NotExecuted(t *testing.T) {
+	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
+	ctx := context.Background()
+
+	event := commandsdomain.DeviceCommandEvent{
+		CommandID:   "cmd_route_5",
+		IMEI:        "imei-route-5",
+		CommandCode: 201,
+		Payload:     json.RawMessage(`{"power":true}`),
+	}
+
+	if err := dispatcher.Dispatch(ctx, event); err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if lg.callCount() != 0 {
+		t.Errorf("expected 0 LG API calls for missing commandRoute (strict cutover), got %d", lg.callCount())
+	}
+	sent, failed := status.counts()
+	if sent != 0 || failed != 0 {
+		t.Errorf("expected 0 status calls for missing commandRoute, got sent=%d failed=%d", sent, failed)
+	}
+	if tracking.callCount() != 0 {
+		t.Error("no synthetic ack should be published for missing commandRoute")
+	}
+}
+
 func TestDispatch_InvalidPayload_PublishesFailedAndAck(t *testing.T) {
 	dispatcher, lg, status, tracking, _ := newTestDispatcher(t, nil)
 	ctx := context.Background()
 
 	event := commandsdomain.DeviceCommandEvent{
-		CommandID:   "cmd_6",
-		IMEI:        "imei-6",
-		CommandCode: 202, // lg.temperature.set
+		CommandID:    "cmd_6",
+		IMEI:         "imei-6",
+		CommandRoute: commandsdomain.CommandRouteVendorCloud,
+		CommandCode:  202, // lg.temperature.set
 		Payload:     json.RawMessage(`{"temperature":100}`),
 	}
 
