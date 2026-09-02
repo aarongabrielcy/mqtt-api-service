@@ -201,18 +201,16 @@ func main() {
 		return nil
 	}
 
-	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.LG.ClientID)
-	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.LG.ClientID)
+	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID)
+	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID)
 
 	if err := client.Subscribe(ctx, pushTopic, lgService.HandlePushMessage); err != nil {
 		log.Error("Error suscribiendo a topic", zap.String("topic", pushTopic), zap.Error(err))
 	}
-	log.Info("Suscrito a topic", zap.String("topic", pushTopic))
 
 	if err := client.Subscribe(ctx, inboxTopic, inboxHandler); err != nil {
 		log.Error("Error suscribiendo a topic", zap.String("topic", inboxTopic), zap.Error(err))
 	}
-	log.Info("Suscrito a topic", zap.String("topic", inboxTopic))
 
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -222,6 +220,10 @@ func main() {
 
 	log.Info("Señal de shutdown recibida")
 	cancel()
+
+	if err := client.Disconnect(ctx); err != nil {
+		log.Warn("error closing mqtt client", zap.Error(err))
+	}
 
 	if commandConsumer != nil {
 		if err := commandConsumer.Close(); err != nil {

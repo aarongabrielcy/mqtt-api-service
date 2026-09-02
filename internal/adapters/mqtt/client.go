@@ -25,11 +25,21 @@ type Client interface {
 	IsConnected() bool
 }
 
+// subscription guarda lo necesario para volver a suscribirse a un topic
+// cada vez que se (re)establece la conexión con el broker.
+type subscription struct {
+	topic   string
+	handler MessageHandler
+}
+
 type client struct {
 	log    *zap.Logger
 	cfg    config.Config
 	client mqtt.Client
 	mu     sync.RWMutex
+
+	subsMu sync.Mutex
+	subs   []subscription
 }
 
 func NewClient(cfg config.Config, log *zap.Logger) (Client, error) {
@@ -83,8 +93,21 @@ func (c *client) Connect(ctx context.Context) error {
 	opts.SetMaxReconnectInterval(3 * time.Second)
 	opts.SetCleanSession(true)
 
+	// OnConnectHandler se dispara en la conexión inicial Y en cada
+	// reconexión automática que haga paho. Como usamos CleanSession(true),
+	// el broker NO recuerda las suscripciones entre reconexiones, así que
+	// hay que re-suscribirse acá siempre, no solo una vez en main.go.
 	opts.SetOnConnectHandler(func(client mqtt.Client) {
 		c.log.Info("MQTT conectado")
+		// Pequeño delay antes de re-suscribir: suscribirse inmediatamente
+		// tras el CONNACK parece hacer que el broker de LG corte la sesión
+		// (ver EOF ~120ms después de cada conexión). Esto le da tiempo a
+		// que la sesión quede asentada del lado del broker antes de
+		// mandar los SUBSCRIBE.
+		go func() {
+			time.Sleep(1 * time.Second)
+			c.resubscribeAll()
+		}()
 	})
 
 	opts.SetConnectionLostHandler(func(client mqtt.Client, err error) {
@@ -105,13 +128,43 @@ func (c *client) Connect(ctx context.Context) error {
 
 func (c *client) Subscribe(ctx context.Context, topic string, handler MessageHandler) error {
 
-	token := c.client.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) {
+	// Guardamos la suscripción para poder reaplicarla automáticamente
+	// cada vez que el cliente se reconecte (ver resubscribeAll).
+	c.subsMu.Lock()
+	c.subs = append(c.subs, subscription{topic: topic, handler: handler})
+	c.subsMu.Unlock()
 
+	return c.subscribeNow(ctx, topic, handler)
+}
+
+// subscribeNow hace la suscripción real contra el broker, sin tocar
+// la lista de suscripciones registradas.
+func (c *client) subscribeNow(ctx context.Context, topic string, handler MessageHandler) error {
+	token := c.client.Subscribe(topic, 1, func(_ mqtt.Client, msg mqtt.Message) {
 		_ = handler(ctx, msg.Topic(), msg.Payload())
 	})
 
 	token.Wait()
 	return token.Error()
+}
+
+// resubscribeAll reaplica todas las suscripciones conocidas. Se llama
+// desde OnConnectHandler, tanto en la conexión inicial como en cada
+// reconexión automática.
+func (c *client) resubscribeAll() {
+	c.subsMu.Lock()
+	subs := make([]subscription, len(c.subs))
+	copy(subs, c.subs)
+	c.subsMu.Unlock()
+
+	for _, s := range subs {
+		if err := c.subscribeNow(context.Background(), s.topic, s.handler); err != nil {
+			c.log.Error("Error re-suscribiendo a topic tras (re)conexión",
+				zap.String("topic", s.topic), zap.Error(err))
+			continue
+		}
+		c.log.Info("Suscrito a topic", zap.String("topic", s.topic))
+	}
 }
 
 func (c *client) Publish(ctx context.Context, topic string, payload []byte) error {
