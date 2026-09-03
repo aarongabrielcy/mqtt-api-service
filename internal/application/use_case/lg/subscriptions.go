@@ -50,11 +50,14 @@ func (s *LGService) ensurePushSubscriptions(ctx context.Context) error {
 	}
 
 	failed := 0
+	entries := s.devices.Snapshot()
 
-	for deviceID, device := range s.devices {
+	for _, entry := range entries {
+		deviceID := entry.DeviceID
+		device := entry.Device
 
 		if _, ok := pushMap[deviceID]; ok {
-			device.PushSubscribed = true
+			device.SetPushSubscribed(true)
 			continue
 		}
 
@@ -68,12 +71,12 @@ func (s *LGService) ensurePushSubscriptions(ctx context.Context) error {
 			continue
 		}
 
-		device.PushSubscribed = true
+		device.SetPushSubscribed(true)
 	}
 
 	s.log.Info(
 		"Push subscriptions synchronized",
-		zap.Int("devices", len(s.devices)),
+		zap.Int("devices", len(entries)),
 		zap.Int("failed", failed),
 	)
 
@@ -94,12 +97,14 @@ func (s *LGService) ensureEventSubscriptions(ctx context.Context) error {
 	const eventSubscriptionHours = 24
 
 	failed := 0
+	entries := s.devices.Snapshot()
 
-	for deviceID, device := range s.devices {
+	for _, entry := range entries {
+		deviceID := entry.DeviceID
+		device := entry.Device
 
 		if event, ok := eventMap[deviceID]; ok {
-			device.EventSubscribed = true
-			device.EventTTL = event.TTL
+			device.SetEventSubscription(true, event.TTL)
 			continue
 		}
 
@@ -113,12 +118,12 @@ func (s *LGService) ensureEventSubscriptions(ctx context.Context) error {
 			continue
 		}
 
-		device.EventSubscribed = true
+		device.SetEventSubscription(true, 0)
 	}
 
 	s.log.Info(
 		"Event subscriptions synchronized",
-		zap.Int("devices", len(s.devices)),
+		zap.Int("devices", len(entries)),
 		zap.Int("failed", failed),
 	)
 

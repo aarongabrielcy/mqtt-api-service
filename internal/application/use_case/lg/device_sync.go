@@ -22,27 +22,27 @@ func (s *LGService) syncDevices(ctx context.Context) error {
 
 		seen[device.DeviceID] = struct{}{}
 
-		if existing, ok := s.devices[device.DeviceID]; ok {
-			existing.Device = device
+		if existing, ok := s.devices.Get(device.DeviceID); ok {
+			existing.SetDevice(device)
 			continue
 		}
 
-		s.devices[device.DeviceID] = &ManagedDevice{
-			Device: device,
-		}
+		md := &ManagedDevice{}
+		md.SetDevice(device)
+		s.devices.Set(device.DeviceID, md)
 	}
 
 	removed := 0
-	for deviceID := range s.devices {
-		if _, ok := seen[deviceID]; !ok {
-			delete(s.devices, deviceID)
+	for _, entry := range s.devices.Snapshot() {
+		if _, ok := seen[entry.DeviceID]; !ok {
+			s.devices.Delete(entry.DeviceID)
 			removed++
 		}
 	}
 
 	s.log.Info(
 		"LG devices synchronized",
-		zap.Int("count", len(s.devices)),
+		zap.Int("count", s.devices.Len()),
 		zap.Int("removed", removed),
 	)
 

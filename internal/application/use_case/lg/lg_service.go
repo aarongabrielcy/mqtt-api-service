@@ -11,6 +11,7 @@ import (
 	"mqtt-api-service/internal/application/normalizers"
 	"mqtt-api-service/internal/domain/interfaces"
 	"mqtt-api-service/internal/infrastructure/config"
+	"sync"
 
 	"go.uber.org/zap"
 )
@@ -20,6 +21,7 @@ type LGService struct {
 	pushService     *lg.PushService
 	registryService *lg.DeviceRegistryService
 	eventService    *lg.EventService
+	energyService   *lg.EnergyService
 
 	stateParser     *parser.LGStateParser
 	pushParser      *parser.LGPushParser
@@ -32,7 +34,7 @@ type LGService struct {
 
 	clientID string
 
-	devices map[string]*ManagedDevice
+	devices *deviceRegistry
 
 	trackingClient interfaces.TrackingClient
 
@@ -58,13 +60,15 @@ func (s *LGService) SetConfirmationManager(cm *commands.ConfirmationManager) {
 }
 
 type ManagedDevice struct {
-	Device lg.Device
+	mu sync.RWMutex
 
-	PushSubscribed  bool
-	EventSubscribed bool
-	EventTTL        int64
+	device lg.Device
 
-	LastState *parser.AirConditionerState
+	pushSubscribed  bool
+	eventSubscribed bool
+	eventTTL        int64
+
+	lastState *parser.AirConditionerState
 }
 
 func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepository,
@@ -79,6 +83,7 @@ func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepo
 		pushService:      lg.NewPushService(lgClient),
 		registryService:  lg.NewDeviceRegistryService(lgClient),
 		eventService:     lg.NewEventService(lgClient),
+		energyService:    lg.NewEnergyService(lgClient),
 		stateParser:      parser.NewLGStateParser(log),
 		stateNormalizer:  normalizers.NewLGStateNormalizer(log, cfg.LGCommands.DebugStateLogs),
 		trackingClient:   trackingClient,
@@ -86,7 +91,7 @@ func NewLGService(cfg *config.Config, log *zap.Logger, repo mongo.RawMessageRepo
 		log:              log,
 		clientID:         cfg.LGApi.ClientID,
 		repository:       repo,
-		devices:          make(map[string]*ManagedDevice),
+		devices:          newDeviceRegistry(),
 		debugStateLogs:   cfg.LGCommands.DebugStateLogs,
 	}, nil
 }
@@ -133,4 +138,41 @@ func (s *LGService) Initialize(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+func (d *ManagedDevice) SetDevice(device lg.Device) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.device = device
+}
+
+func (d *ManagedDevice) GetDevice() lg.Device {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.device
+}
+
+func (d *ManagedDevice) SetPushSubscribed(v bool) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.pushSubscribed = v
+}
+
+func (d *ManagedDevice) SetEventSubscription(subscribed bool, ttl int64) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.eventSubscribed = subscribed
+	d.eventTTL = ttl
+}
+
+func (d *ManagedDevice) SetLastState(state *parser.AirConditionerState) {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+	d.lastState = state
+}
+
+func (d *ManagedDevice) GetLastState() *parser.AirConditionerState {
+	d.mu.RLock()
+	defer d.mu.RUnlock()
+	return d.lastState
 }

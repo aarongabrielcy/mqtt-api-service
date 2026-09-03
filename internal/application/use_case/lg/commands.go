@@ -10,14 +10,6 @@ import (
 	"go.uber.org/zap"
 )
 
-// logControlError registra el resultado de un ControlState fallido,
-// clasificando "device not connected" (LG 416/1222, condición operativa
-// esperada — ver lg.APIError.IsDeviceNotConnected) como warn en vez de
-// error, igual que ya hace state_polling.go para el polling. Reemplaza el
-// antiguo fmt.Printf("device %s desconectado...") que se disparaba para
-// CUALQUIER lg.APIError (no solo desconexión) además del log estructurado
-// ya existente, duplicando el log y con un mensaje engañoso cuando el error
-// no era en realidad una desconexión.
 func (s *LGService) logControlError(err error, action string, fields ...zap.Field) {
 	var apiErr *lg.APIError
 	if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
@@ -38,7 +30,7 @@ func (s *LGService) SetDevicePower(ctx context.Context, deviceID string, on bool
 		zap.String("deviceID", deviceID),
 		zap.Bool("on", on),
 	)
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 
@@ -72,7 +64,7 @@ func (s *LGService) SetDeviceTemperature(ctx context.Context, deviceID string, t
 		zap.String("deviceID", deviceID),
 		zap.Float64("temperature", temperature),
 	)
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 
@@ -102,7 +94,7 @@ func (s *LGService) SetAirFlow(ctx context.Context, deviceID string, strength st
 		zap.String("strength", strength),
 	)
 
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 
@@ -150,7 +142,7 @@ func (s *LGService) SetOperationMode(ctx context.Context, deviceID string, mode 
 		zap.String("mode", mode),
 	)
 
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 
@@ -198,7 +190,7 @@ func (s *LGService) SetOscillation(ctx context.Context, deviceID string, enabled
 		zap.Bool("enabled", enabled),
 	)
 
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 
@@ -235,7 +227,7 @@ func (s *LGService) SetPowerSave(ctx context.Context, deviceID string, enabled b
 		zap.Bool("enabled", enabled),
 	)
 
-	if _, ok := s.devices[deviceID]; !ok {
+	if _, ok := s.devices.Get(deviceID); !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
 

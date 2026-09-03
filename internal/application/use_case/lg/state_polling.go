@@ -52,11 +52,17 @@ func (s *LGService) StartDeviceStateMonitor(ctx context.Context, interval time.D
 func (s *LGService) refreshDeviceStates(ctx context.Context) {
 	var counters deviceRefreshCounters
 
-	for deviceID, device := range s.devices {
-		if device.Device.DeviceInfo.DeviceType != "DEVICE_AIR_CONDITIONER" {
+	entries := s.devices.Snapshot()
+
+	for _, entry := range entries {
+		deviceID := entry.DeviceID
+		device := entry.Device
+
+		deviceType := device.GetDevice().DeviceInfo.DeviceType
+		if deviceType != "DEVICE_AIR_CONDITIONER" {
 			s.log.Warn("skipping state refresh: unsupported device type",
 				zap.String("deviceID", deviceID),
-				zap.String("deviceType", device.Device.DeviceInfo.DeviceType),
+				zap.String("deviceType", deviceType),
 			)
 			counters.skipped++
 			continue
@@ -65,8 +71,6 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 		state, err := s.refreshDeviceState(ctx, deviceID, device, normalizers.EventCodeTracking)
 		if err != nil {
 			if state != nil {
-				// El estado se leyó/parseó bien; falló solo la publicación
-				// de telemetry — ya logueado dentro de refreshDeviceState.
 				counters.telemetryPublishFailed++
 				continue
 			}
@@ -85,7 +89,7 @@ func (s *LGService) refreshDeviceStates(ctx context.Context) {
 	}
 
 	s.log.Info("Device states refreshed",
-		zap.Int("devices", len(s.devices)),
+		zap.Int("devices", len(entries)),
 		zap.Int("telemetryPublished", counters.telemetryPublished),
 		zap.Int("stateReadFailed", counters.stateReadFailed),
 		zap.Int("telemetryPublishFailed", counters.telemetryPublishFailed),
@@ -118,10 +122,6 @@ func (s *LGService) refreshDeviceState(
 	if err != nil {
 		var apiErr *lg.APIError
 		if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
-			// Condición operativa esperada (dispositivo apagado/offline en
-			// la app LG), no un error crítico del servicio: se loguea como
-			// warn sin repetir el error completo, y no rompe el resto del
-			// ciclo de polling.
 			s.log.Warn("device disconnected",
 				zap.String("deviceID", deviceID),
 				zap.String("lgErrorCode", apiErr.Code),
@@ -150,7 +150,7 @@ func (s *LGService) refreshDeviceState(
 		s.log.Error("failed to sync device state to redis", zap.String("deviceID", deviceID), zap.Error(err))
 	}
 
-	device.LastState = state
+	device.SetLastState(state)
 
 	if s.confirmationManager != nil {
 		s.confirmationManager.TryConfirm(ctx, deviceID, commands.CurrentState{
@@ -187,7 +187,7 @@ func (s *LGService) refreshDeviceState(
 	if err := s.publishTracking(
 		ctx,
 		deviceID,
-		device.Device.DeviceInfo.DeviceType,
+		device.GetDevice().DeviceInfo.DeviceType,
 		eventCode,
 		state,
 	); err != nil {
@@ -214,7 +214,7 @@ func (s *LGService) refreshDeviceState(
 // ACKNOWLEDGED por sí mismo, solo le da a TryConfirm una oportunidad de
 // confirmar antes del siguiente ciclo de polling o push.
 func (s *LGService) RefreshDeviceState(ctx context.Context, deviceID string) error {
-	device, ok := s.devices[deviceID]
+	device, ok := s.devices.Get(deviceID)
 	if !ok {
 		return fmt.Errorf("device %s not managed", deviceID)
 	}
