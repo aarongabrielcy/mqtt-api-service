@@ -8,6 +8,8 @@ import (
 	repository "mqtt-api-service/internal/adapters/mongo"
 	"mqtt-api-service/internal/application/commands"
 	"mqtt-api-service/internal/application/normalizers"
+	"sync"
+	"sync/atomic"
 	"time"
 
 	"mqtt-api-service/internal/adapters/api/lg"
@@ -17,17 +19,19 @@ import (
 	"go.uber.org/zap"
 )
 
+const stateRefreshConcurrencyLimit = 8
+
 // deviceRefreshCounters separa los distintos resultados posibles de un
 // ciclo de polling. Antes de FASE LG-1B existía un único contador "failed"
 // que no distinguía un fallo real de publicación de un dispositivo
 // simplemente desconectado (LG 416/1222) — lo que producía resúmenes
 // engañosos como "failed publishing telemetry" seguido de "failed:0".
 type deviceRefreshCounters struct {
-	stateReadFailed        int
-	telemetryPublished     int
-	telemetryPublishFailed int
-	disconnected           int
-	skipped                int
+	stateReadFailed        int64
+	telemetryPublished     int64
+	telemetryPublishFailed int64
+	disconnected           int64
+	skipped                int64
 }
 
 func (s *LGService) StartDeviceStateMonitor(ctx context.Context, interval time.Duration) {
@@ -50,51 +54,77 @@ func (s *LGService) StartDeviceStateMonitor(ctx context.Context, interval time.D
 }
 
 func (s *LGService) refreshDeviceStates(ctx context.Context) {
-	var counters deviceRefreshCounters
-
 	entries := s.devices.Snapshot()
 
+	var counters deviceRefreshCounters
+	sem := make(chan struct{}, stateRefreshConcurrencyLimit)
+	var wg sync.WaitGroup
+
 	for _, entry := range entries {
-		deviceID := entry.DeviceID
-		device := entry.Device
-
-		deviceType := device.GetDevice().DeviceInfo.DeviceType
-		if deviceType != "DEVICE_AIR_CONDITIONER" {
-			s.log.Warn("skipping state refresh: unsupported device type",
-				zap.String("deviceID", deviceID),
-				zap.String("deviceType", deviceType),
+		if ctx.Err() != nil {
+			s.log.Warn("context cancelled, stopping device state refresh",
+				zap.Error(ctx.Err()),
 			)
-			counters.skipped++
-			continue
+			break
 		}
 
-		state, err := s.refreshDeviceState(ctx, deviceID, device, normalizers.EventCodeTracking)
-		if err != nil {
-			if state != nil {
-				counters.telemetryPublishFailed++
-				continue
-			}
-
-			var apiErr *lg.APIError
-			if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
-				counters.disconnected++
-				continue
-			}
-
-			counters.stateReadFailed++
-			continue
+		select {
+		case sem <- struct{}{}:
+		case <-ctx.Done():
+			s.log.Warn("context cancelled while waiting for slot",
+				zap.Error(ctx.Err()),
+			)
+			wg.Wait()
+			return
 		}
 
-		counters.telemetryPublished++
+		wg.Add(1)
+		go func(deviceID string, device *ManagedDevice) {
+			defer wg.Done()
+			defer func() { <-sem }()
+
+			deviceType := device.GetDevice().DeviceInfo.DeviceType
+			if deviceType != "DEVICE_AIR_CONDITIONER" {
+				s.log.Warn("skipping state refresh: unsupported device type",
+					zap.String("deviceID", deviceID),
+					zap.String("deviceType", deviceType),
+				)
+				atomic.AddInt64(&counters.skipped, 1)
+				return
+			}
+
+			state, err := s.refreshDeviceState(ctx, deviceID, device, normalizers.EventCodeTracking)
+			if err != nil {
+				if state != nil {
+					// El estado se leyó/parseó bien; falló solo la publicación
+					// de telemetry — ya logueado dentro de refreshDeviceState.
+					atomic.AddInt64(&counters.telemetryPublishFailed, 1)
+					return
+				}
+
+				var apiErr *lg.APIError
+				if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
+					atomic.AddInt64(&counters.disconnected, 1)
+					return
+				}
+
+				atomic.AddInt64(&counters.stateReadFailed, 1)
+				return
+			}
+
+			atomic.AddInt64(&counters.telemetryPublished, 1)
+		}(entry.DeviceID, entry.Device)
 	}
+
+	wg.Wait()
 
 	s.log.Info("Device states refreshed",
 		zap.Int("devices", len(entries)),
-		zap.Int("telemetryPublished", counters.telemetryPublished),
-		zap.Int("stateReadFailed", counters.stateReadFailed),
-		zap.Int("telemetryPublishFailed", counters.telemetryPublishFailed),
-		zap.Int("disconnected", counters.disconnected),
-		zap.Int("skipped", counters.skipped),
+		zap.Int64("telemetryPublished", counters.telemetryPublished),
+		zap.Int64("stateReadFailed", counters.stateReadFailed),
+		zap.Int64("telemetryPublishFailed", counters.telemetryPublishFailed),
+		zap.Int64("disconnected", counters.disconnected),
+		zap.Int64("skipped", counters.skipped),
 	)
 }
 
@@ -122,6 +152,10 @@ func (s *LGService) refreshDeviceState(
 	if err != nil {
 		var apiErr *lg.APIError
 		if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
+			// Condición operativa esperada (dispositivo apagado/offline en
+			// la app LG), no un error crítico del servicio: se loguea como
+			// warn sin repetir el error completo, y no rompe el resto del
+			// ciclo de polling.
 			s.log.Warn("device disconnected",
 				zap.String("deviceID", deviceID),
 				zap.String("lgErrorCode", apiErr.Code),
