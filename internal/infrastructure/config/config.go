@@ -41,6 +41,14 @@ type Config struct {
 		// suscripción push/event LG (antes hardcodeado a 30 minutos, ahora
 		// configurable con el mismo default).
 		EventSubscriptionMonitorInterval time.Duration
+
+		// EnergyPollInterval es cada cuánto se consulta el consumo energético
+		// diario (GetEnergyUsage) de todos los dispositivos administrados.
+		// No hardcodeado, a diferencia de un primer borrador: LG podría
+		// aplicar rate limiting distinto al de /state, y esta consulta es
+		// menos urgente que el polling de estado, así que se deja
+		// configurable de forma independiente. Default 3600s (1 hora).
+		EnergyPollInterval time.Duration
 	}
 
 	MQTT struct {
@@ -154,6 +162,7 @@ func LoadConfig() (*Config, error) {
 	cfg.LG.ClientID = getEnv("LG_CLIENT_ID", "")
 	cfg.LG.StatePollInterval = time.Duration(getEnvInt("LG_STATE_POLL_INTERVAL_SECONDS", 30)) * time.Second
 	cfg.LG.EventSubscriptionMonitorInterval = time.Duration(getEnvInt("LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", 1800)) * time.Second
+	cfg.LG.EnergyPollInterval = time.Duration(getEnvInt("LG_ENERGY_POLL_INTERVAL_SECONDS", 3600)) * time.Second
 
 	cfg.LGApi.BaseURL = getEnv("LG_API_BASE_URL", "")
 	cfg.LGApi.APIKey = getEnv("LG_API_KEY", "")

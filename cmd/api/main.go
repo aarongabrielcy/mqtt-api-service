@@ -192,6 +192,7 @@ func main() {
 	// inmediato. Ahora ambos vienen de config (defaults: 30s / 30min).
 	lgService.StartEventSubscriptionMonitor(ctx, cfg.LG.EventSubscriptionMonitorInterval)
 	lgService.StartDeviceStateMonitor(ctx, cfg.LG.StatePollInterval)
+	lgService.StartEnergyMonitor(ctx, cfg.LG.EnergyPollInterval)
 
 	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",

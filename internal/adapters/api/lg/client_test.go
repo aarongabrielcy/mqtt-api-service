@@ -1,6 +1,8 @@
 package lg
 
-import "testing"
+import (
+	"testing"
+)
 
 func TestAPIError_IsDeviceNotConnected(t *testing.T) {
 	cases := []struct {
