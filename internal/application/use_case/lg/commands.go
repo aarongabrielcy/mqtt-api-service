@@ -257,3 +257,28 @@ func (s *LGService) SetPowerSave(ctx context.Context, deviceID string, enabled b
 
 	return nil
 }
+
+func (s *LGService) GetDeviceEnergyUsage(ctx context.Context, deviceID string) (*lg.EnergyUsageResponse, error) {
+	s.log.Info("GetDeviceEnergyUsage called", zap.String("deviceID", deviceID))
+
+	if _, ok := s.devices.Get(deviceID); !ok {
+		return nil, fmt.Errorf("device %s not managed", deviceID)
+	}
+
+	usage, _, err := s.refreshEnergyUsage(ctx, deviceID)
+	if err != nil {
+		s.logControlError(err, "failed to get device energy usage", zap.String("deviceID", deviceID))
+		return nil, err
+	}
+
+	for _, data := range usage.DataList {
+		s.log.Info(
+			"energy usage retrieved",
+			zap.String("deviceID", deviceID),
+			zap.String("date", data.UsedDate),
+			zap.Float64("energyUsage", data.EnergyUsage),
+		)
+	}
+
+	return usage, nil
+}

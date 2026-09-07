@@ -35,21 +35,21 @@ type EnergyUsage struct {
 func (s *EnergyService) GetEnergyUsage(
 	ctx context.Context,
 	req EnergyUsageRequest,
-) (*EnergyUsageResponse, error) {
+) (resp *EnergyUsageResponse, rawBody []byte, err error) {
 	if req.DeviceID == "" {
-		return nil, fmt.Errorf("device ID is required")
+		return nil, nil, fmt.Errorf("device ID is required")
 	}
 
 	if req.Period == "" {
-		return nil, fmt.Errorf("period is required")
+		return nil, nil, fmt.Errorf("period is required")
 	}
 
 	if req.StartDate == "" {
-		return nil, fmt.Errorf("start date is required")
+		return nil, nil, fmt.Errorf("start date is required")
 	}
 
 	if req.EndDate == "" {
-		return nil, fmt.Errorf("end date is required")
+		return nil, nil, fmt.Errorf("end date is required")
 	}
 
 	path := fmt.Sprintf(
@@ -60,19 +60,19 @@ func (s *EnergyService) GetEnergyUsage(
 		req.EndDate,
 	)
 
-	var resp APIResponse[EnergyUsageResponse]
+	var apiResp APIResponse[EnergyUsageResponse]
 
-	err := s.client.doRequest(
+	rawBody, _, err = s.client.doRequestCapture(
 		ctx,
 		"GET",
 		path,
 		nil,
 		nil,
-		&resp,
+		&apiResp,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
-	return &resp.Response, nil
+	return &apiResp.Response, rawBody, nil
 }

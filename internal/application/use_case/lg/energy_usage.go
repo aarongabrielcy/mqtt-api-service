@@ -2,6 +2,7 @@ package lg_service
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sync"
@@ -9,6 +10,7 @@ import (
 	"time"
 
 	lg "mqtt-api-service/internal/adapters/api/lg"
+	repository "mqtt-api-service/internal/adapters/mongo"
 
 	"go.uber.org/zap"
 )
@@ -85,7 +87,7 @@ func (s *LGService) refreshEnergyUsages(ctx context.Context) {
 				return
 			}
 
-			usage, err := s.refreshEnergyUsage(ctx, deviceID)
+			usage, rawBody, err := s.refreshEnergyUsage(ctx, deviceID)
 			if err != nil {
 				var apiErr *lg.APIError
 				if errors.As(err, &apiErr) && apiErr.IsDeviceNotConnected() {
@@ -107,6 +109,8 @@ func (s *LGService) refreshEnergyUsages(ctx context.Context) {
 				return
 			}
 
+			var dailyUsageKwh float64
+			today := time.Now().Format("20060102")
 			for _, data := range usage.DataList {
 				s.log.Info(
 					"energy usage retrieved",
@@ -114,7 +118,42 @@ func (s *LGService) refreshEnergyUsages(ctx context.Context) {
 					zap.String("date", data.UsedDate),
 					zap.Float64("energyUsage", data.EnergyUsage),
 				)
+				if data.UsedDate == today {
+					dailyUsageKwh = data.EnergyUsage
+				}
 			}
+
+			var p map[string]any
+			json.Unmarshal(rawBody, &p)
+
+			if err := s.repository.Save(
+				ctx,
+				repository.RawMessage{
+					IMEI:        deviceID,
+					Brand:       "LG",
+					MessageType: "energy_usage",
+					Endpoint:    "/devices/energy/" + deviceID + "/usage",
+					Payload:     p,
+					PayloadRaw:  string(rawBody),
+				},
+			); err != nil {
+				s.log.Error(
+					"failed to save raw energy message",
+					zap.String("deviceID", deviceID),
+					zap.Error(err),
+				)
+			}
+
+			if err := s.publishEnergyTracking(ctx, deviceID, deviceType, dailyUsageKwh); err != nil {
+				s.log.Error(
+					"failed publishing energy telemetry",
+					zap.String("deviceID", deviceID),
+					zap.Error(err),
+				)
+				atomic.AddInt64(&counters.failed, 1)
+				return
+			}
+
 			atomic.AddInt64(&counters.energyRetrieved, 1)
 		}(entry.DeviceID, entry.Device)
 	}
@@ -133,9 +172,9 @@ func (s *LGService) refreshEnergyUsages(ctx context.Context) {
 func (s *LGService) refreshEnergyUsage(
 	ctx context.Context,
 	deviceID string,
-) (*lg.EnergyUsageResponse, error) {
+) (*lg.EnergyUsageResponse, []byte, error) {
 	if deviceID == "" {
-		return nil, fmt.Errorf("device ID is required")
+		return nil, nil, fmt.Errorf("device ID is required")
 	}
 
 	now := time.Now()

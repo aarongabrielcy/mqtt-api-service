@@ -22,6 +22,7 @@ const (
 	EventCodeAirFlowChange
 	EventCodeOscillationChange
 	EventCodePowerSaveChange
+	EventCodeEnergyUsage
 )
 
 // LGTelemetryEnvelope es el payload JSON directo que se envía a
@@ -36,6 +37,7 @@ type LGTelemetryEnvelope struct {
 	Device      LGDeviceRef   `json:"device"`
 	State       LGStateInfo   `json:"state"`
 	Climate     LGClimateInfo `json:"climate"`
+	Energy      *LGEnergyInfo `json:"energy,omitempty"`
 }
 
 type LGDeviceRef struct {
@@ -63,6 +65,11 @@ type LGTemperatureInfo struct {
 	Unit    string  `json:"unit"`
 }
 
+type LGEnergyInfo struct {
+	DailyUsageKwh float64 `json:"dailyUsageKwh"`
+	LastUpdated   int64   `json:"lastUpdated"`
+}
+
 type LGStateNormalizer struct {
 	log *zap.Logger
 
@@ -76,22 +83,17 @@ func NewLGStateNormalizer(log *zap.Logger, debugStateLogs bool) *LGStateNormaliz
 	return &LGStateNormalizer{log: log, debugStateLogs: debugStateLogs}
 }
 
-// NormalizeTelemetry construye el topic (devices/<deviceID>/telemetry) y el
-// payload JSON directo que se enviarán a tracking-platform vía
-// TrackingClient.IngestRaw. LG no expone humedad en AirConditionerState, por
-// lo que climate.humidity siempre viaja en null.
-func (n *LGStateNormalizer) NormalizeTelemetry(
+// buildEnvelope arma la parte común a cualquier evento de telemetry
+// (device, state, climate) a partir del estado LG parseado. NormalizeTelemetry
+// y NormalizeEnergyTelemetry comparten esta base y solo difieren en si
+// completan Energy o no.
+func buildEnvelope(
 	deviceID string,
 	deviceType string,
 	eventCode EventCode,
 	state *parser.AirConditionerState,
-) (topic string, payload []byte, receivedAt time.Time, err error) {
-	if state == nil {
-		return "", nil, time.Time{}, fmt.Errorf("cannot normalize nil state for device %s", deviceID)
-	}
-
-	receivedAt = time.Now().UTC()
-
+	receivedAt time.Time,
+) LGTelemetryEnvelope {
 	envelope := LGTelemetryEnvelope{
 		Vendor:      "lg",
 		Integration: "lg-thinq",
@@ -114,6 +116,59 @@ func (n *LGStateNormalizer) NormalizeTelemetry(
 	envelope.Climate.Temperature.Target = state.Temperature.TargetTemperature
 	envelope.Climate.Temperature.Unit = state.Temperature.Unit
 
+	return envelope
+}
+
+// NormalizeTelemetry construye el topic (devices/<deviceID>/telemetry) y el
+// payload JSON directo que se enviarán a tracking-platform vía
+// TrackingClient.IngestRaw. LG no expone humedad en AirConditionerState, por
+// lo que climate.humidity siempre viaja en null.
+func (n *LGStateNormalizer) NormalizeTelemetry(
+	deviceID string,
+	deviceType string,
+	eventCode EventCode,
+	state *parser.AirConditionerState,
+) (topic string, payload []byte, receivedAt time.Time, err error) {
+	if state == nil {
+		return "", nil, time.Time{}, fmt.Errorf("cannot normalize nil state for device %s", deviceID)
+	}
+
+	receivedAt = time.Now().UTC()
+	envelope := buildEnvelope(deviceID, deviceType, eventCode, state, receivedAt)
+
+	return n.marshalAndLog(deviceID, envelope, receivedAt)
+}
+
+// NormalizeEnergyTelemetry construye el mismo envelope que NormalizeTelemetry
+// (device/state/climate a partir del último estado LG conocido, típicamente
+// leído desde el snapshot en Redis por el llamador) pero con el campo
+// Energy poblado y eventCode=EventCodeEnergyUsage. Se recibe el eventCode
+// explícito (en vez de fijarlo internamente) para dejar la puerta abierta a
+// reusar esta función si en el futuro surge más de un tipo de evento de
+// energía.
+func (n *LGStateNormalizer) NormalizeEnergyTelemetry(
+	deviceID string,
+	deviceType string,
+	eventCode EventCode,
+	state *parser.AirConditionerState,
+	energy LGEnergyInfo,
+) (topic string, payload []byte, receivedAt time.Time, err error) {
+	if state == nil {
+		return "", nil, time.Time{}, fmt.Errorf("cannot normalize nil state for device %s", deviceID)
+	}
+
+	receivedAt = time.Now().UTC()
+	envelope := buildEnvelope(deviceID, deviceType, eventCode, state, receivedAt)
+	envelope.Energy = &energy
+
+	return n.marshalAndLog(deviceID, envelope, receivedAt)
+}
+
+func (n *LGStateNormalizer) marshalAndLog(
+	deviceID string,
+	envelope LGTelemetryEnvelope,
+	receivedAt time.Time,
+) (topic string, payload []byte, out time.Time, err error) {
 	jsonBytes, err := json.Marshal(envelope)
 	if err != nil {
 		return "", nil, time.Time{}, fmt.Errorf("error serializing normalized telemetry: %w", err)
