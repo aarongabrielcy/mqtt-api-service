@@ -49,8 +49,6 @@ type Config struct {
 		// menos urgente que el polling de estado, así que se deja
 		// configurable de forma independiente. Default 3600s (1 hora).
 		EnergyPollInterval time.Duration
-
-		DeviceSyncPollInterval time.Duration
 	}
 
 	MQTT struct {
@@ -165,7 +163,6 @@ func LoadConfig() (*Config, error) {
 	cfg.LG.StatePollInterval = time.Duration(getEnvInt("LG_STATE_POLL_INTERVAL_SECONDS", 30)) * time.Second
 	cfg.LG.EventSubscriptionMonitorInterval = time.Duration(getEnvInt("LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", 1800)) * time.Second
 	cfg.LG.EnergyPollInterval = time.Duration(getEnvInt("LG_ENERGY_POLL_INTERVAL_SECONDS", 3600)) * time.Second
-	cfg.LG.DeviceSyncPollInterval = time.Duration(getEnvInt("LG_DEVICE_SYNC_POLL_INTERVAL_SECONDS", 60)) * time.Second
 
 	cfg.LGApi.BaseURL = getEnv("LG_API_BASE_URL", "")
 	cfg.LGApi.APIKey = getEnv("LG_API_KEY", "")

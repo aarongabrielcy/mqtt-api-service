@@ -12,7 +12,6 @@ import (
 	"mqtt-api-service/internal/domain/interfaces"
 	"mqtt-api-service/internal/infrastructure/config"
 	"sync"
-	"time"
 
 	"go.uber.org/zap"
 )
@@ -126,20 +125,11 @@ func (s *LGService) logParsedStateIfEnabled(deviceID string, raw json.RawMessage
 }
 
 func (s *LGService) Initialize(ctx context.Context) error {
-
-	if err := s.syncAndSubscribeDevices(ctx); err != nil {
+	if err := s.syncDevices(ctx); err != nil {
 		return err
 	}
 
 	if err := s.ensureRegistrySubscription(ctx); err != nil {
-		return err
-	}
-
-	return nil
-}
-
-func (s *LGService) syncAndSubscribeDevices(ctx context.Context) error {
-	if err := s.syncDevices(ctx); err != nil {
 		return err
 	}
 
@@ -148,37 +138,6 @@ func (s *LGService) syncAndSubscribeDevices(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-func (s *LGService) StartDeviceSyncMonitor(
-	ctx context.Context,
-	interval time.Duration,
-) {
-	go func() {
-		ticker := time.NewTicker(interval)
-		defer ticker.Stop()
-
-		s.log.Info(
-			"device synchronization monitor started",
-			zap.Duration("interval", interval),
-		)
-
-		for {
-			select {
-			case <-ctx.Done():
-				s.log.Info("device synchronization monitor stopped")
-				return
-
-			case <-ticker.C:
-				if err := s.syncAndSubscribeDevices(ctx); err != nil {
-					s.log.Error(
-						"failed to synchronize devices",
-						zap.Error(err),
-					)
-				}
-			}
-		}
-	}()
 }
 
 func (d *ManagedDevice) SetDevice(device lg.Device) {
