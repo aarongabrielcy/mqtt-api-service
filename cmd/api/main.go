@@ -193,6 +193,7 @@ func main() {
 	lgService.StartEventSubscriptionMonitor(ctx, cfg.LG.EventSubscriptionMonitorInterval)
 	lgService.StartDeviceStateMonitor(ctx, cfg.LG.StatePollInterval)
 	lgService.StartEnergyMonitor(ctx, cfg.LG.EnergyPollInterval)
+	lgService.StartDeviceSyncMonitor(ctx, cfg.LG.DeviceSyncPollInterval)
 
 	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",
