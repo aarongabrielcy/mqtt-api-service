@@ -111,10 +111,32 @@ CONFIRMED, `internal/adapters/mqtt/client.go`. The MQTT client connects to `MQTT
 (`LG_MQTT_ENDPOINT`, an AWS IoT broker) using mutual TLS built from `LG_MQTT_CA_CERT_PATH` /
 `LG_MQTT_CLIENT_CERT_PATH` / `LG_MQTT_CLIENT_KEY_PATH` (defaults `/app/certs/AmazonRootCA1.pem`,
 `/app/certs/lg-client.crt`, `/app/certs/lg-client.key`), `TLS.MinVersion = TLS 1.2`,
-auto-reconnect enabled (max reconnect interval 3s). `cmd/api/main.go` subscribes to
-`app/clients/<LG_CLIENT_ID>/push` (routed to `LGService.HandlePushMessage`) and
-`app/clients/<LG_CLIENT_ID>/inbox` (routed to a no-op logging handler — inbox messages are received
-and logged only, not otherwise processed). `LG_CLIENT_ID` here is the LG app/tenant identifier used
+`CleanSession=true`. The required subscriptions are `app/clients/<LG_CLIENT_ID>/push` (routed to
+`LGService.HandlePushMessage`) and `app/clients/<LG_CLIENT_ID>/inbox` (routed to a no-op logging
+handler — inbox messages are received and logged only, not otherwise processed), both QoS 1
+(`cmd/api/push.go`).
+
+Push transport lifecycle (MQTT-API-LG-PUSH-RECONNECT-RESILIENCE-1, Phase 1):
+- `LG_PUSH_ENABLED` enables/disables only the push-MQTT transport. When unset it is OFF for
+  `APP_ENV=local` and ON for any other `APP_ENV`; an invalid value falls back to false. When OFF
+  the MQTT client is never constructed. Polling, Kafka commands and confirmation are unaffected.
+  The push transport starts after `LGService.Initialize` and the command bridge.
+- With push ON, a blank `LG_MQTT_CLIENT_ID` is a fatal startup configuration error. There is no
+  fallback to `LG_CLIENT_ID`/`LG_API_CLIENT_ID` and no generated ID. The value must be dedicated
+  and stable per environment: two active runtimes with the same value evict each other.
+- A push transport failure never terminates the process. If the first connect fails (for example
+  broker `EOF`), the same supervisor retries it with the same backoff. A setup error (TLS) leaves
+  the service running without push.
+- paho auto-reconnect is disabled. A supervisor goroutine reconnects with
+  `internal/adapters/mqtt.DefaultReconnectPolicy`: 2s initial delay, doubling to a 5m cap. A
+  connection shorter than 60s does not reset the backoff, and 3 consecutive short-lived
+  connections log a heuristic "possible duplicate LG_MQTT_CLIENT_ID" warning.
+- Subscriptions are (re)installed from `OnConnect` on every successful connection. A graceful,
+  bounded MQTT `Disconnect` runs on SIGINT/SIGTERM.
+- Diagnostics log a 12-hex SHA-256 fingerprint of the transport ID, never the raw value, and
+  redact the client segment of `app/clients/...` topics.
+
+`LG_CLIENT_ID` here is the LG app/tenant identifier used
 to build these topics, distinct from `MQTT.ClientID` (`LG_MQTT_CLIENT_ID`, the MQTT/AWS IoT session
 identity) and from `LGApi.ClientID` (`LG_API_CLIENT_ID`, used only in LG HTTP API headers) — three
 different identifiers that must not be confused.

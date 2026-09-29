@@ -38,6 +38,7 @@ func clearEcosystemEnv(t *testing.T) {
 		"LG_STATE_POLL_INTERVAL_SECONDS",
 		"LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS",
 		"LG_COMMAND_POST_REFRESH_DELAY_MS",
+		"LG_PUSH_ENABLED",
 	} {
 		t.Setenv(key, "")
 	}
