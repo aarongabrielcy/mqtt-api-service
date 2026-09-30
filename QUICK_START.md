@@ -114,7 +114,7 @@ Basada en los **topics reales de LG** que compartiste:
 
 ```bash
 # LG MQTT
-LG_CLIENT_ID=aa0d9ce5-0888-4b1e-ba7e-7da932f57c6a
+LG_CLIENT_ID=your_lg_client_id
 LG_MQTT_USER=your_mqtt_user
 LG_MQTT_PASS=your_mqtt_pass
 

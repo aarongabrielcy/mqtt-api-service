@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	repository "mqtt-api-service/internal/adapters/mongo"
+	"mqtt-api-service/internal/adapters/mqtt"
 	"mqtt-api-service/internal/adapters/parser"
 	"mqtt-api-service/internal/application/commands"
 	"mqtt-api-service/internal/application/normalizers"
@@ -60,8 +61,10 @@ func (s *LGService) HandlePushMessage(ctx context.Context, topic string, rawPayl
 func (s *LGService) parsePushMessage(topic string, rawPayload []byte) (msg *parser.LGPushMessage, ok bool, err error) {
 	msg, err = s.pushParser.Parse(topic, rawPayload)
 	if err != nil {
+		// Topic redactado: su segmento de client id puede ser el Client ID
+		// MQTT real (FR-07).
 		s.log.Error("failed to parse push message",
-			zap.String("topic", topic),
+			zap.String("topic", mqtt.RedactTopic(topic)),
 			zap.Error(err),
 		)
 		return nil, false, err

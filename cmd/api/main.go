@@ -57,7 +57,15 @@ func main() {
 		zap.Bool("trackingGrpcAddressConfigured", cfg.GRPC.Address != ""),
 		zap.Bool("mongoConfigured", cfg.Mongo.URI != ""),
 		zap.Bool("redisConfigured", cfg.Redis.Addr != ""),
+		zap.Bool("pushEnabled", cfg.LG.PushEnabled),
+		zap.Bool("pushEnabledExplicit", cfg.LG.PushEnabledExplicit),
 	)
+
+	// Push habilitado sin LG_MQTT_CLIENT_ID dedicado: fallar antes de abrir
+	// cualquier conexión, sin fallback a otro identificador (FR-03).
+	if err := cfg.ValidatePush(); err != nil {
+		log.Fatal("invalid LG push MQTT configuration", zap.Error(err))
+	}
 
 	mongoClient, err := mongo.NewMongoClient(ctx, cfg, log)
 	if err != nil {
@@ -72,20 +80,6 @@ func main() {
 	}
 
 	deviceStateStore := adaptercache.NewDeviceStateStore(redisClient, log)
-
-	// 3. MQTT Client (LG broker)
-	client, err := mqtt.NewClient(*cfg, log)
-	if err != nil {
-		log.Fatal("mqtt client error", zap.Error(err))
-	}
-
-	log.Info("Intentando conectar a MQTT...")
-
-	if err := client.Connect(ctx); err != nil {
-		log.Fatal("MQTT connect failed", zap.Error(err))
-	}
-
-	log.Info("MQTT CONECTADO EXITOSAMENTE")
 
 	grpcCfg := grpcclient.Config{
 		Address:           cfg.GRPC.Address,
@@ -197,22 +191,20 @@ func main() {
 
 	inboxHandler := func(ctx context.Context, topic string, payload []byte) error {
 		log.Info("Mensaje recibido",
-			zap.String("topic", topic),
+			zap.String("topic", mqtt.RedactTopic(topic)),
 			zap.ByteString("payload", payload),
 		)
 		return nil
 	}
 
-	pushTopic := fmt.Sprintf("app/clients/%s/push", cfg.MQTT.ClientID)
-	inboxTopic := fmt.Sprintf("app/clients/%s/inbox", cfg.MQTT.ClientID)
-
-	if err := client.Subscribe(ctx, pushTopic, lgService.HandlePushMessage); err != nil {
-		log.Error("Error suscribiendo a topic", zap.String("topic", pushTopic), zap.Error(err))
-	}
-
-	if err := client.Subscribe(ctx, inboxTopic, inboxHandler); err != nil {
-		log.Error("Error suscribiendo a topic", zap.String("topic", inboxTopic), zap.Error(err))
-	}
+	// 3. Transporte push-MQTT LG (opcional, LG_PUSH_ENABLED). Se abre después
+	// de inicializar LGService y el bridge de comandos, así que polling,
+	// comandos y confirmación nunca dependen de él. Las suscripciones
+	// push/inbox se instalan en cada conexión exitosa (inicial y reconexión).
+	// Un fallo del push nunca termina el proceso: el primer connect fallido
+	// lo reintenta el mismo supervisor acotado que las reconexiones.
+	pushClient := startPushTransport(ctx, cfg, log, mqtt.NewClient,
+		pushSubscriptions(cfg, lgService.HandlePushMessage, inboxHandler))
 
 	// 9. Graceful shutdown
 	sigChan := make(chan os.Signal, 1)
@@ -221,11 +213,12 @@ func main() {
 	<-sigChan
 
 	log.Info("Señal de shutdown recibida")
-	cancel()
 
-	if err := client.Disconnect(ctx); err != nil {
-		log.Warn("error closing mqtt client", zap.Error(err))
-	}
+	// Primero cortar el push (detiene el supervisor de reconexión y envía
+	// DISCONNECT acotado) para que no haya reconexión durante el shutdown.
+	stopPushTransport(context.Background(), pushClient, log)
+
+	cancel()
 
 	if commandConsumer != nil {
 		if err := commandConsumer.Close(); err != nil {

@@ -42,15 +42,23 @@ type Config struct {
 		// configurable con el mismo default).
 		EventSubscriptionMonitorInterval time.Duration
 
-		// EnergyPollInterval es cada cuánto se consulta el consumo energético
-		// diario (GetEnergyUsage) de todos los dispositivos administrados.
-		// No hardcodeado, a diferencia de un primer borrador: LG podría
-		// aplicar rate limiting distinto al de /state, y esta consulta es
-		// menos urgente que el polling de estado, así que se deja
-		// configurable de forma independiente. Default 3600s (1 hora).
+		// EnergyPollInterval controla el polling de consumo energetico LG; default 3600s.
 		EnergyPollInterval time.Duration
 
+		// DeviceSyncPollInterval controla la sincronizacion periodica de dispositivos LG; default 60s.
 		DeviceSyncPollInterval time.Duration
+
+		// PushEnabled (MQTT-API-LG-PUSH-RECONNECT-RESILIENCE-1) controla solo
+		// el transporte push-MQTT LG (LG_PUSH_ENABLED). Sin definir, el
+		// default depende de APP_ENV: OFF en local (un runtime de desarrollo
+		// no debe desalojar a otro entorno reusando LG_MQTT_CLIENT_ID) y ON
+		// en cualquier otro entorno (contrato previo). Un valor inválido cae
+		// a false. Polling, comandos y confirmación no dependen de este flag.
+		PushEnabled bool
+
+		// PushEnabledExplicit indica si PushEnabled vino de LG_PUSH_ENABLED
+		// (true) o del default por entorno (false); solo para diagnóstico.
+		PushEnabledExplicit bool
 	}
 
 	MQTT struct {
@@ -166,6 +174,8 @@ func LoadConfig() (*Config, error) {
 	cfg.LG.EventSubscriptionMonitorInterval = time.Duration(getEnvInt("LG_EVENT_SUBSCRIPTION_MONITOR_INTERVAL_SECONDS", 1800)) * time.Second
 	cfg.LG.EnergyPollInterval = time.Duration(getEnvInt("LG_ENERGY_POLL_INTERVAL_SECONDS", 3600)) * time.Second
 	cfg.LG.DeviceSyncPollInterval = time.Duration(getEnvInt("LG_DEVICE_SYNC_POLL_INTERVAL_SECONDS", 60)) * time.Second
+	cfg.LG.PushEnabled = getEnvBoolStrict("LG_PUSH_ENABLED", !IsLocalEnvironment(cfg.App.Environment), false)
+	cfg.LG.PushEnabledExplicit = os.Getenv("LG_PUSH_ENABLED") != ""
 
 	cfg.LGApi.BaseURL = getEnv("LG_API_BASE_URL", "")
 	cfg.LGApi.APIKey = getEnv("LG_API_KEY", "")
@@ -224,6 +234,30 @@ func LoadConfig() (*Config, error) {
 	cfg.LGCommands.PostRefreshDelay = time.Duration(getEnvInt("LG_COMMAND_POST_REFRESH_DELAY_MS", 1000)) * time.Millisecond
 
 	return cfg, nil
+}
+
+// localEnvironment es el valor de APP_ENV que identifica un runtime de
+// desarrollo local (default de APP_ENV y valor de .env.example).
+const localEnvironment = "local"
+
+// IsLocalEnvironment indica si APP_ENV corresponde al entorno local de
+// desarrollo (comparación sin distinguir mayúsculas y sin espacios).
+func IsLocalEnvironment(appEnv string) bool {
+	return strings.EqualFold(strings.TrimSpace(appEnv), localEnvironment)
+}
+
+// ValidatePush verifica la identidad de transporte MQTT cuando el push LG
+// está habilitado (FR-03): LG_MQTT_CLIENT_ID es obligatorio y nunca se
+// reemplaza por LG_CLIENT_ID, LG_API_CLIENT_ID ni un valor generado. El
+// error nunca incluye el valor de ningún identificador.
+func (c *Config) ValidatePush() error {
+	if !c.LG.PushEnabled {
+		return nil
+	}
+	if strings.TrimSpace(c.MQTT.ClientID) == "" {
+		return fmt.Errorf("LG push MQTT is enabled but LG_MQTT_CLIENT_ID is empty: set a dedicated, stable LG_MQTT_CLIENT_ID for this environment or set LG_PUSH_ENABLED=false")
+	}
+	return nil
 }
 
 func getEnv(key, fallback string) string {
